@@ -1,5 +1,5 @@
 // gmailService.ts
-// Service for handling Gmail API operations using Google Identity Services
+// Service for handling Gmail API operations
 
 // Declare types for TypeScript
 declare const gapi: any;

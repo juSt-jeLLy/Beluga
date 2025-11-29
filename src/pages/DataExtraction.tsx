@@ -2,10 +2,9 @@ import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Cloud, Thermometer, Sun, Droplets, Sprout, CloudRain, CheckCircle2, AlertCircle } from "lucide-react";
+import { Mail, Cloud, Thermometer, Sun, Droplets, Sprout, CloudRain, AlertCircle, Loader2 } from "lucide-react";
 import dataPatternBg from "@/assets/data-pattern.jpg";
 import { createGmailService } from "@/services/gmailService";
 import type { SensorData } from "@/services/gmailService";
@@ -39,87 +38,47 @@ const DataExtraction = () => {
   const [selectedMethod, setSelectedMethod] = useState<"gmail" | "blynk">("gmail");
   const [gmailService] = useState(() => createGmailService(GMAIL_API_KEY, GMAIL_CLIENT_ID));
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
-
-  const mockSensorData: SensorData[] = [
-    {
-      type: "temperature",
-      title: "Temperature & Humidity",
-      data: "Morning 09:00: 23.4°C/61%, Noon 13:00: 29.8°C/48%, Evening 18:00: 25.1°C/54%, Heat Index 30.4°C, Dew Point 17°C. Stable conditions beneficial for cereals cultivation.\n\n📊 Context: Temperature and humidity readings provide critical data for crop health monitoring. Optimal temperature ranges and humidity levels ensure proper plant growth and help prevent disease.",
-      timestamp: "2024-01-15 18:30:00",
-      sensorHealth: "97%",
-      icon: <Thermometer className="h-5 w-5" />
-    },
-    {
-      type: "sunlight",
-      title: "Sunlight Intensity",
-      data: "Peak hours 10:50-14:15. Morning readings: 22,500lx, Noon peak: 61,200lx, Evening: 8,900lx. Quality Score: 78/100. Occasional 1-2 minute shade from tree canopy on west boundary detected by BH1750 sensor.\n\n📊 Context: Sunlight intensity measurements help optimize photosynthesis efficiency. The BH1750 sensor provides accurate lux readings throughout the day to track light availability for crops.",
-      timestamp: "2024-01-15 18:15:00",
-      sensorHealth: "100%",
-      icon: <Sun className="h-5 w-5" />
-    },
-    {
-      type: "moisture",
-      title: "Soil Moisture Levels",
-      data: "Average 41% moisture at 7cm depth. Readings: 09:00→35%, 12:00→38%, 15:00→51% (post-rain spike), 18:00→48%. Bajra crop optimum range. Moisture spike correlates with rainfall event.\n\n📊 Context: Soil moisture monitoring at various depths ensures optimal irrigation scheduling. Moisture levels correlate with rainfall events and help prevent both drought stress and waterlogging.",
-      timestamp: "2024-01-15 18:00:00",
-      sensorHealth: "96%",
-      icon: <Droplets className="h-5 w-5" />
-    },
-    {
-      type: "growth",
-      title: "Live Crop Growth",
-      data: "Pearl Millet current height: 42.3cm, Early vegetative stage. Growth rate: +1.9cm daily average. Active leaf count: 7 leaves. Environmental correlation: Soil moisture 41%, Sunlight score 78/100. Healthy development pattern observed.\n\n📊 Context: Real-time crop growth monitoring tracks height, leaf development, and growth rates. This data combined with environmental factors provides insights into crop health and development stages.",
-      timestamp: "2024-01-15 17:45:00",
-      sensorHealth: "100%",
-      icon: <Sprout className="h-5 w-5" />
-    },
-    {
-      type: "rainfall",
-      title: "Rainfall Data",
-      data: "Total precipitation: 4.8 inches over 3h 12m duration. Timeline: Start 14:23, End 17:35. Pattern: Steady rain for 90 minutes, heavy downpour 15:58-16:42, light drizzle finish. Arduino rain gauge sensor.\n\n📊 Context: Precise rainfall measurement using Arduino rain gauge sensors tracks precipitation patterns. Duration and intensity data helps correlate with soil moisture changes and irrigation needs.",
-      timestamp: "2024-01-15 17:35:00",
-      sensorHealth: "92%",
-      icon: <CloudRain className="h-5 w-5" />
-    }
-  ];
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   // Load Google API scripts on component mount
   useEffect(() => {
     const loadScripts = async () => {
       try {
         await gmailService.loadGoogleScripts();
+        await new Promise(resolve => setTimeout(resolve, 1000));
         setScriptsLoaded(true);
       } catch (error) {
         console.error('Failed to load Google scripts:', error);
-        toast({
-          title: "Script Loading Error",
-          description: "Failed to load Google API scripts. Gmail integration may not work.",
-          variant: "destructive",
-        });
       }
     };
     
     loadScripts();
-  }, [gmailService, toast]);
+  }, [gmailService]);
+
+  // Auto-fetch on page load
+  useEffect(() => {
+    if (scriptsLoaded && !initialLoadDone) {
+      setInitialLoadDone(true);
+      if (selectedMethod === "gmail") {
+        extractFromGmail();
+      } else {
+        extractFromBlynk();
+      }
+    }
+  }, [scriptsLoaded, initialLoadDone, selectedMethod]);
 
   const extractFromGmail = async () => {
     setLoading(true);
     try {
       if (!scriptsLoaded) {
         toast({
-          title: "Loading Required Scripts",
-          description: "Please wait while we load the Gmail API...",
+          title: "Loading Scripts",
+          description: "Please wait...",
         });
         await gmailService.loadGoogleScripts();
-        // Wait a bit for scripts to fully initialize
         await new Promise(resolve => setTimeout(resolve, 1000));
         setScriptsLoaded(true);
       }
-
-      toast({
-        title: "Initializing Gmail API",
-        description: "Setting up secure connection...",
-      });
 
       // Initialize GAPI client
       await gmailService.initGapiClient();
@@ -130,8 +89,8 @@ const DataExtraction = () => {
       // Check if already has token
       if (!gmailService.hasAccessToken()) {
         toast({
-          title: "Authentication Required",
-          description: "Please sign in with your Google account (pubgkiller203@gmail.com)...",
+          title: "Sign In Required",
+          description: "Please authorize access to your Gmail...",
         });
         
         // Request access token (this will show the OAuth popup)
@@ -139,24 +98,20 @@ const DataExtraction = () => {
       }
 
       toast({
-        title: "Fetching Emails",
-        description: "Retrieving sensor data from robot@blynk.cloud...",
+        title: "Fetching Data",
+        description: "Retrieving sensor emails...",
       });
 
       // Fetch emails from last 24 hours
       const emails = await gmailService.fetchEmails('robot@blynk.cloud');
       
       if (emails.length === 0) {
+        setExtractedData([]);
         toast({
-          title: "No Data Found",
-          description: "No sensor emails found in the last 24 hours. Showing demo data instead.",
+          title: "No Data Available",
+          description: "No sensor emails found in the last 24 hours.",
+          variant: "destructive",
         });
-        // Add icons to mock data
-        const dataWithIcons = mockSensorData.map(item => ({
-          ...item,
-          icon: getIconForType(item.type)
-        }));
-        setExtractedData(dataWithIcons);
         return;
       }
 
@@ -169,22 +124,16 @@ const DataExtraction = () => {
       setExtractedData(dataWithIcons);
       
       toast({
-        title: "Data Extracted Successfully",
-        description: `Extracted ${emails.length} sensor readings from last 24 hours from pubgkiller203@gmail.com`,
+        title: "Success",
+        description: `Extracted ${emails.length} sensor readings`,
       });
     } catch (error: any) {
       console.error('Gmail extraction error:', error);
-      
-      // Show mock data on error
-      const dataWithIcons = mockSensorData.map(item => ({
-        ...item,
-        icon: getIconForType(item.type)
-      }));
-      setExtractedData(dataWithIcons);
+      setExtractedData([]);
       
       toast({
-        title: "Using Demo Data",
-        description: error.message || "Unable to fetch from Gmail. Showing sample data instead.",
+        title: "Error",
+        description: error.message || "Unable to fetch from Gmail",
         variant: "destructive",
       });
     } finally {
@@ -196,15 +145,15 @@ const DataExtraction = () => {
     setLoading(true);
     try {
       toast({
-        title: "Blynk Cloud Integration",
-        description: "Fetching data from Blynk Cloud API...",
+        title: "Fetching Data",
+        description: "Connecting to Blynk Cloud...",
       });
 
       // Fetch from Blynk Cloud API
       const response = await fetch(BLYNK_API_URL);
       
       if (!response.ok) {
-        throw new Error(`Blynk API error: ${response.status}`);
+        throw new Error(`API error: ${response.status}`);
       }
 
       const data = await response.json();
@@ -237,37 +186,27 @@ const DataExtraction = () => {
         }
       }
       
-      // If no data received or empty, show mock data as fallback
       if (blynkData.length === 0) {
-        const dataWithIcons = mockSensorData.map(item => ({
-          ...item,
-          icon: getIconForType(item.type)
-        }));
-        setExtractedData(dataWithIcons);
+        setExtractedData([]);
         toast({
-          title: "Demo Data Loaded",
-          description: "Blynk API returned no events. Showing sample sensor data.",
+          title: "No Data Available",
+          description: "Blynk API returned no events.",
+          variant: "destructive",
         });
       } else {
         setExtractedData(blynkData);
         toast({
-          title: "Data Extracted Successfully",
+          title: "Success",
           description: `Retrieved ${blynkData.length} events from Blynk Cloud`,
         });
       }
     } catch (error: any) {
       console.error('Blynk extraction error:', error);
-      
-      // Fallback to mock data on error
-      const dataWithIcons = mockSensorData.map(item => ({
-        ...item,
-        icon: getIconForType(item.type)
-      }));
-      setExtractedData(dataWithIcons);
+      setExtractedData([]);
       
       toast({
-        title: "Using Demo Data",
-        description: "Unable to connect to Blynk Cloud. Showing sample data instead.",
+        title: "Error",
+        description: "Unable to connect to Blynk Cloud",
         variant: "destructive",
       });
     } finally {
@@ -275,8 +214,10 @@ const DataExtraction = () => {
     }
   };
 
-  const handleExtract = () => {
-    if (selectedMethod === "gmail") {
+  const handleMethodChange = (method: "gmail" | "blynk") => {
+    setSelectedMethod(method);
+    setExtractedData([]);
+    if (method === "gmail") {
       extractFromGmail();
     } else {
       extractFromBlynk();
@@ -306,112 +247,62 @@ const DataExtraction = () => {
               Extract <span className="gradient-text">Robot Data</span>
             </h1>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Retrieve agricultural sensor data from your IoT devices via Gmail or Blynk Cloud
+              Retrieve agricultural sensor data from IoT devices
             </p>
           </div>
 
-          <Card className="mb-8 glass-card max-w-5xl mx-auto hover-lift animate-slide-in-left">
+          <Card className="mb-8 glass-card max-w-3xl mx-auto hover-lift animate-slide-in-left">
             <CardHeader>
-              <CardTitle className="text-2xl">Choose Data Source</CardTitle>
-              <CardDescription className="text-base">Select how you want to extract data from your agricultural robot</CardDescription>
+              <CardTitle className="text-2xl">Data Source</CardTitle>
+              <CardDescription>Choose extraction method</CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="gmail" onValueChange={(v) => setSelectedMethod(v as "gmail" | "blynk")}>
-                <TabsList className="grid w-full grid-cols-2 mb-6">
-                  <TabsTrigger value="gmail" className="gap-2">
-                    <Mail className="h-4 w-4" />
-                    Gmail API
-                  </TabsTrigger>
-                  <TabsTrigger value="blynk" className="gap-2">
-                    <Cloud className="h-4 w-4" />
-                    Blynk Cloud
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="gmail" className="space-y-4">
-                  <div className="rounded-lg border border-primary/20 bg-card/50 p-6">
-                    <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-                      <Mail className="h-5 w-5 text-primary" />
-                      Gmail Configuration
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Extracts emails from robot@blynk.cloud sent to pubgkiller203@gmail.com in the last 24 hours
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-primary mt-1 flex-shrink-0" />
-                        <div className="text-sm">
-                          <span className="font-semibold">Auto-detects: </span>
-                          <span className="text-muted-foreground">Temperature, Humidity, Sunlight, Soil Moisture, Crop Growth, Rainfall</span>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-primary mt-1 flex-shrink-0" />
-                        <div className="text-sm">
-                          <span className="font-semibold">OAuth2 Secured: </span>
-                          <span className="text-muted-foreground">Sign in with Google for secure access</span>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 text-amber-500 mt-1 flex-shrink-0" />
-                        <div className="text-xs text-amber-600 dark:text-amber-400">
-                          <span className="font-semibold">Setup Required: </span>
-                          Add <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded">http://localhost:8080</code> to Authorized JavaScript origins in Google Cloud Console
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-primary mt-1 flex-shrink-0" />
-                        <div className="text-sm font-mono text-xs text-muted-foreground break-all">
-                          Client: {GMAIL_CLIENT_ID.slice(0, 40)}...
-                        </div>
-                      </div>
-                    </div>
+              <div className="flex gap-4">
+                <Button 
+                  onClick={() => handleMethodChange("gmail")}
+                  disabled={loading}
+                  variant={selectedMethod === "gmail" ? "default" : "outline"}
+                  className={`flex-1 h-20 ${selectedMethod === "gmail" ? "bg-gradient-to-r from-primary to-secondary" : ""}`}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <Mail className="h-6 w-6" />
+                    <span className="font-semibold">Gmail API</span>
                   </div>
-                  <Button 
-                    onClick={handleExtract} 
-                    disabled={loading} 
-                    className="w-full bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-lg h-12"
-                  >
-                    {loading ? "Extracting..." : "Extract from Gmail"}
-                  </Button>
-                </TabsContent>
-
-                <TabsContent value="blynk" className="space-y-4">
-                  <div className="rounded-lg border border-secondary/20 bg-card/50 p-6">
-                    <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-                      <Cloud className="h-5 w-5 text-secondary" />
-                      Blynk Cloud Configuration
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Fetches live crop growth events directly from Blynk Cloud IoT platform
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-secondary mt-1 flex-shrink-0" />
-                        <div className="text-sm">
-                          <span className="font-semibold">Real-time Data: </span>
-                          <span className="text-muted-foreground">Direct API connection to IoT sensors</span>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-secondary mt-1 flex-shrink-0" />
-                        <div className="text-xs font-mono text-muted-foreground break-all">
-                          Endpoint: {BLYNK_API_URL.slice(0, 60)}...
-                        </div>
-                      </div>
-                    </div>
+                </Button>
+                
+                <Button 
+                  onClick={() => handleMethodChange("blynk")}
+                  disabled={loading}
+                  variant={selectedMethod === "blynk" ? "default" : "outline"}
+                  className={`flex-1 h-20 ${selectedMethod === "blynk" ? "bg-gradient-to-r from-secondary to-purple-500" : ""}`}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <Cloud className="h-6 w-6" />
+                    <span className="font-semibold">Blynk Cloud</span>
                   </div>
-                  <Button 
-                    onClick={handleExtract} 
-                    disabled={loading} 
-                    className="w-full bg-gradient-to-r from-secondary to-purple-500 hover:opacity-90 text-lg h-12"
-                  >
-                    {loading ? "Extracting..." : "Extract from Blynk Cloud"}
-                  </Button>
-                </TabsContent>
-              </Tabs>
+                </Button>
+              </div>
+              
+              {loading && (
+                <div className="mt-6 flex items-center justify-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Loading data...</span>
+                </div>
+              )}
             </CardContent>
           </Card>
+
+          {!loading && extractedData.length === 0 && initialLoadDone && (
+            <div className="text-center py-16 animate-slide-up">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
+                <AlertCircle className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <h3 className="text-2xl font-semibold mb-2">No Data Available</h3>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                No sensor data found in the last 24 hours from {selectedMethod === "gmail" ? "Gmail" : "Blynk Cloud"}.
+              </p>
+            </div>
+          )}
 
           {extractedData.length > 0 && (
             <div className="space-y-6 max-w-5xl mx-auto">
