@@ -12,17 +12,16 @@ import { createSupabaseService } from "@/services/supabaseService";
 import type { SensorDataRecord } from "@/services/supabaseService";
 import { createBlynkService } from "@/services/blynkService";
 
-const GMAIL_API_KEY = "";
-const GMAIL_CLIENT_ID = "";
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "..";
-const BLYNK_API_URL = "";
-const BLYNK_SERVER = "https://fra1.blynk.cloud";
-const BLYNK_ACCESS_TOKEN = "";
-const BLYNK_TEMPLATE_ID = 1;
-const BLYNK_LOG_EVENT_TOKEN = "z5qJn_MTSXa_Sljdpt-oez5e200XOmPq";
+const GMAIL_API_KEY = import.meta.env.VITE_GMAIL_API_KEY;
+const GMAIL_CLIENT_ID = import.meta.env.VITE_GMAIL_CLIENT_ID ;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const BLYNK_API_URL = import.meta.env.VITE_BLYNK_API_URL;
+const BLYNK_SERVER = import.meta.env.VITE_BLYNK_SERVER;
+const BLYNK_ACCESS_TOKEN = import.meta.env.VITE_BLYNK_ACCESS_TOKEN;
+const BLYNK_TEMPLATE_ID = parseInt(import.meta.env.VITE_BLYNK_TEMPLATE_ID);
 
-// Icon mapping helper
+
 const getIconForType = (type: string): React.ReactNode => {
   switch (type) {
     case 'temperature':
@@ -40,7 +39,6 @@ const getIconForType = (type: string): React.ReactNode => {
   }
 };
 
-// Convert SensorDataRecord to SensorData for display
 const convertToDisplayData = (record: SensorDataRecord): SensorData => {
   return {
     type: record.type,
@@ -71,15 +69,13 @@ const DataExtraction = () => {
   const [blynkService] = useState(() => createBlynkService(
     BLYNK_SERVER,
     BLYNK_ACCESS_TOKEN,
-    BLYNK_TEMPLATE_ID,
-    BLYNK_LOG_EVENT_TOKEN
+    BLYNK_TEMPLATE_ID
   ));
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [savingToDb, setSavingToDb] = useState(false);
   const [loadingFromDb, setLoadingFromDb] = useState(false);
 
-  // Load Google API scripts on component mount
   useEffect(() => {
     const loadScripts = async () => {
       try {
@@ -94,7 +90,6 @@ const DataExtraction = () => {
     loadScripts();
   }, [gmailService]);
 
-  // Load data from database on page load
   useEffect(() => {
     if (!initialLoadDone) {
       setInitialLoadDone(true);
@@ -102,7 +97,6 @@ const DataExtraction = () => {
     }
   }, [initialLoadDone]);
 
-  // Load existing data from Supabase
   const loadFromDatabase = async () => {
     setLoadingFromDb(true);
     try {
@@ -112,7 +106,7 @@ const DataExtraction = () => {
       });
 
       const result = await supabaseService.fetchSensorData({
-        limit: 50 // Load last 50 records
+        limit: 50
       });
 
       if (result.success && result.data && result.data.length > 0) {
@@ -155,20 +149,15 @@ const DataExtraction = () => {
         setScriptsLoaded(true);
       }
 
-      // Initialize GAPI client
       await gmailService.initGapiClient();
-      
-      // Initialize Google Identity Services
       await gmailService.initGoogleIdentity();
 
-      // Check if already has token
       if (!gmailService.hasAccessToken()) {
         toast({
           title: "Sign In Required",
           description: "Please authorize access to your Gmail...",
         });
         
-        // Request access token (this will show the OAuth popup)
         await gmailService.requestAccessToken();
       }
 
@@ -177,7 +166,6 @@ const DataExtraction = () => {
         description: "Retrieving sensor emails...",
       });
 
-      // Fetch emails from last 24 hours
       const emails = await gmailService.fetchEmails('robot@blynk.cloud');
       
       if (emails.length === 0) {
@@ -188,16 +176,12 @@ const DataExtraction = () => {
         return;
       }
 
-      // Add icons to the fetched data
       const dataWithIcons = emails.map(email => ({
         ...email,
         icon: getIconForType(email.type)
       }));
 
-      // Save to Supabase
       await saveToSupabase(dataWithIcons, 'gmail');
-      
-      // Reload from database to show merged data (no duplicates)
       await loadFromDatabase();
       
       toast({
@@ -225,7 +209,6 @@ const DataExtraction = () => {
         description: "Connecting to Blynk Cloud...",
       });
 
-      // Fetch sensor data using the Blynk service
       const result = await blynkService.fetchAllSensorData();
       
       if (!result.success || !result.data || result.data.length === 0) {
@@ -236,7 +219,6 @@ const DataExtraction = () => {
         return;
       }
 
-      // Convert Blynk data to SensorData format
       const blynkData: SensorData[] = result.data.map(item => ({
         type: item.type,
         title: item.title,
@@ -247,10 +229,7 @@ const DataExtraction = () => {
         icon: getIconForType(item.type)
       }));
 
-      // Save to Supabase
       await saveToSupabase(blynkData, 'blynk');
-      
-      // Reload from database to show merged data (no duplicates)
       await loadFromDatabase();
       
       toast({
@@ -281,13 +260,9 @@ const DataExtraction = () => {
   const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => {
     setSavingToDb(true);
     try {
-      // Prepare data for Supabase
       const records = data.map(item => {
-        // Extract location from data
         const locationMatch = item.data.match(/^([^,]+),/);
         const location = locationMatch ? locationMatch[1].trim() : item.location || '';
-
-        // Convert timestamp to ISO format
         const timestamp = new Date(item.timestamp).toISOString();
 
         return {
@@ -301,7 +276,6 @@ const DataExtraction = () => {
         };
       });
 
-      // Check for duplicates and filter them out
       const uniqueRecords = [];
       for (const record of records) {
         const isDuplicate = await supabaseService.checkDuplicateExists(
@@ -323,7 +297,6 @@ const DataExtraction = () => {
         return;
       }
 
-      // Insert records
       const result = await supabaseService.insertMultipleSensorData(uniqueRecords);
 
       if (result.success) {
@@ -377,11 +350,9 @@ const DataExtraction = () => {
             </p>
           </div>
 
-          {/* Ultra Compact Data Source Section */}
           <Card className="mb-6 glass-card max-w-2xl mx-auto hover-lift animate-slide-in-left">
             <CardContent className="p-4">
               <div className="space-y-3">
-                {/* Method Selection - Ultra Compact */}
                 <div className="flex gap-2">
                   <Button 
                     onClick={() => setSelectedMethod("gmail")}
@@ -408,7 +379,6 @@ const DataExtraction = () => {
                   </Button>
                 </div>
 
-                {/* Single Fetch Button - Centered */}
                 <div className="flex justify-center">
                   <Button
                     onClick={handleFetchNewData}
@@ -429,7 +399,6 @@ const DataExtraction = () => {
                   </Button>
                 </div>
                 
-                {/* Status Indicator - Smaller */}
                 {savingToDb && (
                   <div className="flex items-center justify-center gap-1 text-green-600 bg-green-50 py-1 px-2 rounded border border-green-200 text-xs">
                     <Database className="h-2 w-2 animate-pulse" />
@@ -437,7 +406,6 @@ const DataExtraction = () => {
                   </div>
                 )}
 
-                {/* Selected Method Indicator - Smaller */}
                 <div className="text-center">
                   <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/20 text-xs">
                     Current: {selectedMethod === "gmail" ? "Gmail API" : "Blynk Cloud"}
@@ -466,7 +434,7 @@ const DataExtraction = () => {
             </div>
           )}
 
-          {(loadingFromDb) && (
+          {loadingFromDb && (
             <div className="text-center py-12">
               <Loader2 className="h-10 w-10 animate-spin mx-auto mb-3 text-primary" />
               <p className="text-muted-foreground text-sm">Loading sensor data...</p>
@@ -475,17 +443,14 @@ const DataExtraction = () => {
 
           {extractedData.length > 0 && !loadingFromDb && (
             <div className="space-y-4 max-w-5xl mx-auto">
-              <div className="text-center animate-slide-up">
-                <h2 className="text-2xl font-bold mb-2">
-                  Sensor <span className="gradient-text">Data</span>
-                </h2>
-                <p className="text-muted-foreground text-sm">Total: {extractedData.length} readings</p>
-              </div>
+              
               
               {extractedData.map((data, index) => {
-                // Extract location from the first comma-separated value in data
                 const locationMatch = data.data.match(/^([^,]+),/);
                 const location = locationMatch ? locationMatch[1].trim() : data.location || '';
+                
+                // Remove location prefix from data display
+                const cleanData = locationMatch ? data.data.substring(locationMatch[0].length).trim() : data.data;
                 
                 return (
                 <Card 
@@ -522,8 +487,76 @@ const DataExtraction = () => {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="bg-muted/30 p-3 rounded border border-border">
-                      <p className="text-xs font-mono leading-relaxed whitespace-pre-wrap">{data.data}</p>
+                    <div className="bg-muted/30 p-4 rounded border border-border">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Left Column */}
+                        <div className="space-y-3">
+                          {(() => {
+                            const items = cleanData.split(',');
+                            const halfPoint = Math.ceil(items.length / 2);
+                            return items.slice(0, halfPoint).map((item, idx) => {
+                              const trimmedItem = item.trim();
+                              const isReading = /\d+[.,:]?\d*\s*(lx|°C|%|inches|cm|min|h|m)/.test(trimmedItem);
+                              const isTimestamp = /\d{1,2}:\d{2}/.test(trimmedItem);
+                              
+                              return (
+                                <div key={idx}>
+                                  {isReading && !isTimestamp ? (
+                                    <div>
+                                      <h4 className="text-xs font-semibold text-primary mb-1">Reading {idx + 1}</h4>
+                                      <p className="text-sm ml-2">{trimmedItem}</p>
+                                    </div>
+                                  ) : isTimestamp ? (
+                                    <div>
+                                      <h4 className="text-xs font-semibold text-primary mb-1">Time Data</h4>
+                                      <p className="text-sm ml-2">{trimmedItem}</p>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <h4 className="text-xs font-semibold text-primary mb-1">Info</h4>
+                                      <p className="text-sm ml-2">{trimmedItem}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                        
+                        {/* Right Column */}
+                        <div className="space-y-3">
+                          {(() => {
+                            const items = cleanData.split(',');
+                            const halfPoint = Math.ceil(items.length / 2);
+                            return items.slice(halfPoint).map((item, idx) => {
+                              const trimmedItem = item.trim();
+                              const isReading = /\d+[.,:]?\d*\s*(lx|°C|%|inches|cm|min|h|m)/.test(trimmedItem);
+                              const isTimestamp = /\d{1,2}:\d{2}/.test(trimmedItem);
+                              
+                              return (
+                                <div key={idx}>
+                                  {isReading && !isTimestamp ? (
+                                    <div>
+                                      <h4 className="text-xs font-semibold text-primary mb-1">Reading {halfPoint + idx + 1}</h4>
+                                      <p className="text-sm ml-2">{trimmedItem}</p>
+                                    </div>
+                                  ) : isTimestamp ? (
+                                    <div>
+                                      <h4 className="text-xs font-semibold text-primary mb-1">Time Data</h4>
+                                      <p className="text-sm ml-2">{trimmedItem}</p>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <h4 className="text-xs font-semibold text-primary mb-1">Info</h4>
+                                      <p className="text-sm ml-2">{trimmedItem}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
                     </div>
                     <div className="flex gap-1 pt-3 border-t border-border">
                       <Button size="sm" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8">
@@ -543,7 +576,6 @@ const DataExtraction = () => {
           )}
         </div>
         
-        {/* Floating background elements */}
         <div className="absolute top-1/4 right-10 w-64 h-64 bg-primary/10 rounded-full blur-3xl animate-float"></div>
         <div className="absolute bottom-1/4 left-10 w-72 h-72 bg-secondary/10 rounded-full blur-3xl animate-float" style={{animationDelay: '2s'}}></div>
       </div>

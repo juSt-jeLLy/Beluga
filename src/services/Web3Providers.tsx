@@ -8,8 +8,8 @@ import { aeneid } from "@story-protocol/core-sdk";
 
 const config = getDefaultConfig({
   appName: "Test Story App",
-  clientId: "dGcdGcTWIhBsesDXlzLjWLaJX9rQUbdhb1F1GcmXufOdSfqs9LhHucUUYz3ynCMOigfszcrGNX4qprZKbAb558hT",
-  projectId: "87d320198077b925fed90ef66bc2708f",
+  clientId: import.meta.env.VITE_STORY_CLIENT_ID,
+  projectId: import.meta.env.VITE_STORY_PROJECT_ID,
   chains: [aeneid],
   ssr: true, // If your dApp uses server side rendering (SSR)
 });
