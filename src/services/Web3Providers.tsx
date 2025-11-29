@@ -1,7 +1,5 @@
-"use client";
-
 import '@tomo-inc/tomo-evm-kit/styles.css';
-import { ConnectButton,getDefaultConfig, TomoEVMKitProvider } from "@tomo-inc/tomo-evm-kit";
+import { getDefaultConfig, TomoEVMKitProvider } from "@tomo-inc/tomo-evm-kit";
 import { WagmiProvider } from "wagmi";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { PropsWithChildren } from "react";
@@ -12,7 +10,7 @@ const config = getDefaultConfig({
   clientId: "dGcdGcTWIhBsesDXlzLjWLaJX9rQUbdhb1F1GcmXufOdSfqs9LhHucUUYz3ynCMOigfszcrGNX4qprZKbAb558hT",
   projectId: "87d320198077b925fed90ef66bc2708f",
   chains: [aeneid],
-  ssr: true, // If your dApp uses server side rendering (SSR)
+  ssr: false, // Set to false for React apps (not Next.js)
 });
 
 const queryClient = new QueryClient();
@@ -22,7 +20,7 @@ export default function Web3Providers({ children }: PropsWithChildren) {
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <TomoEVMKitProvider>
-          {children}
+          {children as any}
         </TomoEVMKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

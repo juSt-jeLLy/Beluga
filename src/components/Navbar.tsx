@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Wallet } from "lucide-react";
+import { ConnectButton } from "@tomo-inc/tomo-evm-kit";
 import { Button } from "./ui/button";
 
 const Navbar = () => {
@@ -29,10 +29,8 @@ const Navbar = () => {
             </Link>
           </div>
           
-          <Button className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity gap-2">
-            <Wallet className="h-4 w-4" />
-            Connect Wallet
-          </Button>
+          {/* Replace the custom button with ConnectButton */}
+          <ConnectButton />
         </div>
       </div>
     </nav>

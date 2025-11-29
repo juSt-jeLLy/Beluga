@@ -1,22 +1,20 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Web3Providers from "./services/Web3Providers";
 import Index from "./pages/Index";
 import Marketplace from "./pages/Marketplace";
 import DataExtraction from "./pages/DataExtraction";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
-
 const App = () => {
   // Force dark mode
   document.documentElement.classList.add('dark');
   
   return (
-    <QueryClientProvider client={queryClient}>
+    <Web3Providers>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -30,7 +28,7 @@ const App = () => {
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
-    </QueryClientProvider>
+    </Web3Providers>
   );
 };
 

@@ -13,14 +13,6 @@ import type { SensorDataRecord } from "@/services/supabaseService";
 import { createBlynkService } from "@/services/blynkService";
 import type { SensorDataFromBlynk } from "@/services/blynkService";
 
-const GMAIL_API_KEY = "";
-const GMAIL_CLIENT_ID = "";
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
-const BLYNK_SERVER = "https://fra1.blynk.cloud";
-const BLYNK_ACCESS_TOKEN = "";
-const BLYNK_TEMPLATE_ID = 1;
-const BLYNK_LOG_EVENT_TOKEN = "z5qJn_MTSXa_Sljdpt-oez5e200XOmPq";
 
 // Icon mapping helper
 const getIconForType = (type: string): React.ReactNode => {
