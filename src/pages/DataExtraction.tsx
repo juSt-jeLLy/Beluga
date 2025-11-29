@@ -4,13 +4,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Cloud, Thermometer, Sun, Droplets, Sprout, CloudRain, AlertCircle, Loader2 } from "lucide-react";
+import { Mail, Cloud, Thermometer, Sun, Droplets, Sprout, CloudRain, AlertCircle, Loader2, MapPin, Database, RefreshCw } from "lucide-react";
 import dataPatternBg from "@/assets/data-pattern.jpg";
 import { createGmailService } from "@/services/gmailService";
 import type { SensorData } from "@/services/gmailService";
+import { createSupabaseService } from "@/services/supabaseService";
+import type { SensorDataRecord } from "@/services/supabaseService";
 
 const GMAIL_API_KEY = "";
 const GMAIL_CLIENT_ID = "";
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
 const BLYNK_API_URL = "https://blynk.cloud/external/api/logEvent?token=z5qJn_MTSXa_Sljdpt-oez5e200XOmPq&code=live_crop_growth";
 
 // Icon mapping helper
@@ -31,14 +35,38 @@ const getIconForType = (type: string): React.ReactNode => {
   }
 };
 
+// Convert SensorDataRecord to SensorData for display
+const convertToDisplayData = (record: SensorDataRecord): SensorData => {
+  return {
+    type: record.type,
+    title: record.title,
+    data: record.data,
+    location: record.location,
+    timestamp: new Date(record.timestamp).toLocaleString('en-US', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      hour12: true
+    }),
+    sensorHealth: record.sensor_health,
+    icon: getIconForType(record.type)
+  };
+};
+
 const DataExtraction = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [extractedData, setExtractedData] = useState<SensorData[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<"gmail" | "blynk">("gmail");
   const [gmailService] = useState(() => createGmailService(GMAIL_API_KEY, GMAIL_CLIENT_ID));
+  const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [savingToDb, setSavingToDb] = useState(false);
+  const [loadingFromDb, setLoadingFromDb] = useState(false);
 
   // Load Google API scripts on component mount
   useEffect(() => {
@@ -55,17 +83,53 @@ const DataExtraction = () => {
     loadScripts();
   }, [gmailService]);
 
-  // Auto-fetch on page load
+  // Load data from database on page load
   useEffect(() => {
-    if (scriptsLoaded && !initialLoadDone) {
+    if (!initialLoadDone) {
       setInitialLoadDone(true);
-      if (selectedMethod === "gmail") {
-        extractFromGmail();
-      } else {
-        extractFromBlynk();
-      }
+      loadFromDatabase();
     }
-  }, [scriptsLoaded, initialLoadDone, selectedMethod]);
+  }, [initialLoadDone]);
+
+  // Load existing data from Supabase
+  const loadFromDatabase = async () => {
+    setLoadingFromDb(true);
+    try {
+      toast({
+        title: "Loading Data",
+        description: "Fetching stored sensor data from database...",
+      });
+
+      const result = await supabaseService.fetchSensorData({
+        limit: 50 // Load last 50 records
+      });
+
+      if (result.success && result.data && result.data.length > 0) {
+        const displayData = result.data.map(convertToDisplayData);
+        setExtractedData(displayData);
+        
+        toast({
+          title: "Data Loaded",
+          description: `Loaded ${result.data.length} sensor readings from database`,
+        });
+      } else {
+        setExtractedData([]);
+        toast({
+          title: "No Data",
+          description: "No sensor data found in database. Click 'Fetch New Data' to retrieve fresh data.",
+        });
+      }
+    } catch (error: any) {
+      console.error('Load from database error:', error);
+      toast({
+        title: "Database Error",
+        description: "Failed to load data from database",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingFromDb(false);
+    }
+  };
 
   const extractFromGmail = async () => {
     setLoading(true);
@@ -106,11 +170,9 @@ const DataExtraction = () => {
       const emails = await gmailService.fetchEmails('robot@blynk.cloud');
       
       if (emails.length === 0) {
-        setExtractedData([]);
         toast({
-          title: "No Data Available",
-          description: "No sensor emails found in the last 24 hours.",
-          variant: "destructive",
+          title: "No New Data",
+          description: "No new sensor emails found in the last 24 hours.",
         });
         return;
       }
@@ -121,15 +183,18 @@ const DataExtraction = () => {
         icon: getIconForType(email.type)
       }));
 
-      setExtractedData(dataWithIcons);
+      // Save to Supabase
+      await saveToSupabase(dataWithIcons, 'gmail');
+      
+      // Reload from database to show merged data (no duplicates)
+      await loadFromDatabase();
       
       toast({
         title: "Success",
-        description: `Extracted ${emails.length} sensor readings`,
+        description: `Fetched ${emails.length} sensor readings from Gmail`,
       });
     } catch (error: any) {
       console.error('Gmail extraction error:', error);
-      setExtractedData([]);
       
       toast({
         title: "Error",
@@ -170,7 +235,7 @@ const DataExtraction = () => {
           blynkData.push({
             type: 'growth',
             title: 'Live Crop Growth',
-            data: `${description}\n\n📊 Context: Real-time data from Blynk Cloud IoT platform tracking crop development metrics and environmental correlations.`,
+            data: description,
             timestamp: event.timestamp || new Date().toLocaleString('en-US', { 
               year: 'numeric', 
               month: '2-digit', 
@@ -187,22 +252,24 @@ const DataExtraction = () => {
       }
       
       if (blynkData.length === 0) {
-        setExtractedData([]);
         toast({
-          title: "No Data Available",
-          description: "Blynk API returned no events.",
-          variant: "destructive",
+          title: "No New Data",
+          description: "Blynk API returned no new events.",
         });
       } else {
-        setExtractedData(blynkData);
+        // Save to Supabase
+        await saveToSupabase(blynkData, 'blynk');
+        
+        // Reload from database to show merged data (no duplicates)
+        await loadFromDatabase();
+        
         toast({
           title: "Success",
-          description: `Retrieved ${blynkData.length} events from Blynk Cloud`,
+          description: `Fetched ${blynkData.length} events from Blynk Cloud`,
         });
       }
     } catch (error: any) {
       console.error('Blynk extraction error:', error);
-      setExtractedData([]);
       
       toast({
         title: "Error",
@@ -214,13 +281,83 @@ const DataExtraction = () => {
     }
   };
 
-  const handleMethodChange = (method: "gmail" | "blynk") => {
-    setSelectedMethod(method);
-    setExtractedData([]);
-    if (method === "gmail") {
+  const handleFetchNewData = () => {
+    if (selectedMethod === "gmail") {
       extractFromGmail();
     } else {
       extractFromBlynk();
+    }
+  };
+
+  const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => {
+    setSavingToDb(true);
+    try {
+      // Prepare data for Supabase
+      const records = data.map(item => {
+        // Extract location from data
+        const locationMatch = item.data.match(/^([^,]+),/);
+        const location = locationMatch ? locationMatch[1].trim() : item.location || '';
+
+        // Convert timestamp to ISO format
+        const timestamp = new Date(item.timestamp).toISOString();
+
+        return {
+          type: item.type,
+          title: item.title,
+          data: item.data,
+          location: location || null,
+          timestamp,
+          sensor_health: item.sensorHealth,
+          source
+        };
+      });
+
+      // Check for duplicates and filter them out
+      const uniqueRecords = [];
+      for (const record of records) {
+        const isDuplicate = await supabaseService.checkDuplicateExists(
+          record.timestamp,
+          record.type,
+          record.location || undefined
+        );
+        
+        if (!isDuplicate) {
+          uniqueRecords.push(record);
+        }
+      }
+
+      if (uniqueRecords.length === 0) {
+        toast({
+          title: "Already Saved",
+          description: "All sensor readings are already in the database",
+        });
+        return;
+      }
+
+      // Insert records
+      const result = await supabaseService.insertMultipleSensorData(uniqueRecords);
+
+      if (result.success) {
+        toast({
+          title: "Data Saved",
+          description: `Successfully saved ${result.count} new sensor readings to database`,
+        });
+      } else {
+        toast({
+          title: "Save Failed",
+          description: result.error || "Failed to save data to database",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('Save to Supabase error:', error);
+      toast({
+        title: "Database Error",
+        description: "Failed to save data to database",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingToDb(false);
     }
   };
 
@@ -254,13 +391,13 @@ const DataExtraction = () => {
           <Card className="mb-8 glass-card max-w-3xl mx-auto hover-lift animate-slide-in-left">
             <CardHeader>
               <CardTitle className="text-2xl">Data Source</CardTitle>
-              <CardDescription>Choose extraction method</CardDescription>
+              <CardDescription>Choose extraction method and fetch new data</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-4">
+              <div className="flex gap-4 mb-4">
                 <Button 
-                  onClick={() => handleMethodChange("gmail")}
-                  disabled={loading}
+                  onClick={() => setSelectedMethod("gmail")}
+                  disabled={loading || loadingFromDb}
                   variant={selectedMethod === "gmail" ? "default" : "outline"}
                   className={`flex-1 h-20 ${selectedMethod === "gmail" ? "bg-gradient-to-r from-primary to-secondary" : ""}`}
                 >
@@ -271,8 +408,8 @@ const DataExtraction = () => {
                 </Button>
                 
                 <Button 
-                  onClick={() => handleMethodChange("blynk")}
-                  disabled={loading}
+                  onClick={() => setSelectedMethod("blynk")}
+                  disabled={loading || loadingFromDb}
                   variant={selectedMethod === "blynk" ? "default" : "outline"}
                   className={`flex-1 h-20 ${selectedMethod === "blynk" ? "bg-gradient-to-r from-secondary to-purple-500" : ""}`}
                 >
@@ -282,42 +419,101 @@ const DataExtraction = () => {
                   </div>
                 </Button>
               </div>
+
+              <div className="flex gap-4">
+                <Button
+                  onClick={handleFetchNewData}
+                  disabled={loading || loadingFromDb || savingToDb}
+                  className="flex-1 bg-gradient-to-r from-green-600 to-blue-600 hover:opacity-90"
+                  size="lg"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-5 w-5 mr-2" />
+                      Fetch New Data
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={loadFromDatabase}
+                  disabled={loading || loadingFromDb || savingToDb}
+                  variant="outline"
+                  size="lg"
+                >
+                  {loadingFromDb ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <Database className="h-5 w-5 mr-2" />
+                      Reload from DB
+                    </>
+                  )}
+                </Button>
+              </div>
               
-              {loading && (
-                <div className="mt-6 flex items-center justify-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Loading data...</span>
+              {savingToDb && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
+                  <Database className="h-4 w-4 animate-pulse" />
+                  <span className="text-sm">Saving to database...</span>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {!loading && extractedData.length === 0 && initialLoadDone && (
+          {!loading && !loadingFromDb && extractedData.length === 0 && initialLoadDone && (
             <div className="text-center py-16 animate-slide-up">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
                 <AlertCircle className="h-10 w-10 text-muted-foreground" />
               </div>
               <h3 className="text-2xl font-semibold mb-2">No Data Available</h3>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                No sensor data found in the last 24 hours from {selectedMethod === "gmail" ? "Gmail" : "Blynk Cloud"}.
+              <p className="text-muted-foreground max-w-md mx-auto mb-4">
+                No sensor data found in the database.
               </p>
+              <Button
+                onClick={handleFetchNewData}
+                className="bg-gradient-to-r from-primary to-secondary"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Fetch Data from {selectedMethod === "gmail" ? "Gmail" : "Blynk Cloud"}
+              </Button>
             </div>
           )}
 
-          {extractedData.length > 0 && (
+          {(loadingFromDb) && (
+            <div className="text-center py-16">
+              <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
+              <p className="text-muted-foreground">Loading sensor data...</p>
+            </div>
+          )}
+
+          {extractedData.length > 0 && !loadingFromDb && (
             <div className="space-y-6 max-w-5xl mx-auto">
               <div className="text-center animate-slide-up">
                 <h2 className="text-3xl font-bold mb-2">
-                  Extracted <span className="gradient-text">Data</span>
+                  Sensor <span className="gradient-text">Data</span>
                 </h2>
-                <p className="text-muted-foreground">Last 24 Hours • {extractedData.length} readings</p>
+                <p className="text-muted-foreground">Total: {extractedData.length} readings</p>
               </div>
               
-              {extractedData.map((data, index) => (
+              {extractedData.map((data, index) => {
+                // Extract location from the first comma-separated value in data
+                const locationMatch = data.data.match(/^([^,]+),/);
+                const location = locationMatch ? locationMatch[1].trim() : data.location || '';
+                
+                return (
                 <Card 
-                  key={`${data.type}-${index}`}
+                  key={`${data.type}-${data.timestamp}-${index}`}
                   className="glass-card hover-lift animate-slide-in-right"
-                  style={{animationDelay: `${index * 0.1}s`}}
+                  style={{animationDelay: `${index * 0.05}s`}}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between flex-wrap gap-4">
@@ -334,13 +530,23 @@ const DataExtraction = () => {
                           </CardDescription>
                         </div>
                       </div>
-                      <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                        Sensor: {data.sensorHealth}
-                      </Badge>
+                      <div className="flex gap-2 items-center flex-wrap">
+                        {location && (
+                          <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+                            <MapPin className="h-3 w-3 mr-1" />
+                            {location}
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                          Sensor: {data.sensorHealth}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{data.data}</p>
+                    <div className="bg-muted/30 p-4 rounded-lg border border-border">
+                      <p className="text-sm font-mono leading-relaxed whitespace-pre-wrap">{data.data}</p>
+                    </div>
                     <div className="flex gap-2 pt-4 border-t border-border">
                       <Button size="sm" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90">
                         Register as IP
@@ -354,7 +560,7 @@ const DataExtraction = () => {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              )})}
             </div>
           )}
         </div>

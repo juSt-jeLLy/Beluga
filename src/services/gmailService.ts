@@ -11,6 +11,7 @@ export interface SensorData {
   data: string;
   timestamp: string;
   sensorHealth: string;
+  location?: string;
   icon?: React.ReactNode;
 }
 
@@ -168,40 +169,81 @@ export class GmailService {
   }
 
   /**
+   * Extract clean data from HTML body
+   */
+  private extractCleanData(htmlBody: string): { location: string; data: string } {
+    let location = '';
+    let data = '';
+
+    // Extract content from <pre> tag (main data)
+    // Use a more robust regex that handles potential whitespace
+    const preMatch = htmlBody.match(/<pre>\s*(.*?)\s*<\/pre>/is);
+    
+    if (preMatch && preMatch[1]) {
+      const preContent = preMatch[1].trim();
+      
+      // Extract location (first word/phrase before comma)
+      const locationMatch = preContent.match(/^([^,]+),/);
+      if (locationMatch) {
+        location = locationMatch[1].trim();
+      }
+      
+      // Get the full data from pre tag
+      data = preContent;
+    }
+
+    return { location, data };
+  }
+
+  /**
    * Parse email body from payload
    */
-  private parseEmailBody(payload: any): string {
-    let body = '';
+  private parseEmailBody(payload: any): { raw: string; location: string; cleanData: string } {
+    let rawBody = '';
+    let location = '';
+    let cleanData = '';
     
     if (payload.body?.data) {
-      body = this.decodeBase64(payload.body.data);
+      const decoded = this.decodeBase64(payload.body.data);
+      rawBody = decoded;
+      
+      // Try to extract clean data if it's HTML
+      if (decoded.includes('<pre>')) {
+        const extracted = this.extractCleanData(decoded);
+        location = extracted.location;
+        cleanData = extracted.data;
+      }
     } else if (payload.parts) {
       for (const part of payload.parts) {
-        if (part.mimeType === 'text/plain' && part.body?.data) {
-          body = this.decodeBase64(part.body.data);
-          break;
-        } else if (part.mimeType === 'text/html' && part.body?.data) {
+        if (part.mimeType === 'text/html' && part.body?.data) {
           const htmlBody = this.decodeBase64(part.body.data);
-          // Remove HTML tags and clean up whitespace
-          body = htmlBody
-            .replace(/<style[^>]*>.*?<\/style>/gi, '')
-            .replace(/<script[^>]*>.*?<\/script>/gi, '')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/\s+/g, ' ')
-            .trim();
+          rawBody = htmlBody;
+          
+          // Extract clean data and location from HTML
+          const extracted = this.extractCleanData(htmlBody);
+          location = extracted.location;
+          cleanData = extracted.data;
+          
+          // If we found clean data, we're done
+          if (cleanData) break;
+        } else if (part.mimeType === 'text/plain' && part.body?.data) {
+          if (!rawBody) {
+            rawBody = this.decodeBase64(part.body.data);
+          }
         } else if (part.parts) {
           // Recursive search for nested parts
-          body = this.parseEmailBody(part);
-          if (body) break;
+          const result = this.parseEmailBody(part);
+          if (result.cleanData || result.raw) {
+            rawBody = result.raw;
+            location = result.location;
+            cleanData = result.cleanData;
+            if (cleanData) break;
+          }
         }
       }
     }
     
-    return body;
+    return { raw: rawBody, location, cleanData };
   }
 
   /**
@@ -215,7 +257,7 @@ export class GmailService {
   /**
    * Categorize email based on subject line
    */
-  categorizeEmail(subject: string, body: string, internalDate: string): Omit<SensorData, 'icon'> | null {
+  categorizeEmail(subject: string, body: string, internalDate: string, location: string, cleanData: string): Omit<SensorData, 'icon'> | null {
     const lowerSubject = subject.toLowerCase();
     const timestamp = new Date(parseInt(internalDate)).toLocaleString('en-US', { 
       year: 'numeric', 
@@ -227,58 +269,67 @@ export class GmailService {
       hour12: true
     });
 
-    const sensorHealth = this.extractSensorHealth(body);
+    // Use clean data if available, otherwise fall back to raw body
+    const displayData = cleanData && cleanData.trim() ? cleanData : body;
+    const sensorHealth = this.extractSensorHealth(displayData);
+
+    // Debug logging
+    console.log('Email categorization:', {
+      subject: lowerSubject,
+      hasCleanData: !!cleanData,
+      cleanDataLength: cleanData?.length || 0,
+      location,
+      sensorHealth
+    });
 
     if (lowerSubject.includes('temperature') || lowerSubject.includes('humidity')) {
       return {
         type: 'temperature',
         title: 'Temperature & Humidity',
-        data: this.enhanceDescription(body, 'Temperature and humidity readings provide critical data for crop health monitoring. Optimal temperature ranges and humidity levels ensure proper plant growth and help prevent disease.'),
+        data: displayData,
         timestamp,
-        sensorHealth
+        sensorHealth,
+        location
       };
     } else if (lowerSubject.includes('sunlight')) {
       return {
         type: 'sunlight',
         title: 'Sunlight Intensity',
-        data: this.enhanceDescription(body, 'Sunlight intensity measurements help optimize photosynthesis efficiency. The BH1750 sensor provides accurate lux readings throughout the day to track light availability for crops.'),
+        data: displayData,
         timestamp,
-        sensorHealth
+        sensorHealth,
+        location
       };
     } else if (lowerSubject.includes('moisture')) {
       return {
         type: 'moisture',
         title: 'Soil Moisture Levels',
-        data: this.enhanceDescription(body, 'Soil moisture monitoring at various depths ensures optimal irrigation scheduling. Moisture levels correlate with rainfall events and help prevent both drought stress and waterlogging.'),
+        data: displayData,
         timestamp,
-        sensorHealth
+        sensorHealth,
+        location
       };
     } else if (lowerSubject.includes('crop growth') || lowerSubject.includes('growth')) {
       return {
         type: 'growth',
         title: 'Live Crop Growth',
-        data: this.enhanceDescription(body, 'Real-time crop growth monitoring tracks height, leaf development, and growth rates. This data combined with environmental factors provides insights into crop health and development stages.'),
+        data: displayData,
         timestamp,
-        sensorHealth
+        sensorHealth,
+        location
       };
     } else if (lowerSubject.includes('rainfall') || lowerSubject.includes('rain')) {
       return {
         type: 'rainfall',
         title: 'Rainfall Data',
-        data: this.enhanceDescription(body, 'Precise rainfall measurement using Arduino rain gauge sensors tracks precipitation patterns. Duration and intensity data helps correlate with soil moisture changes and irrigation needs.'),
+        data: displayData,
         timestamp,
-        sensorHealth
+        sensorHealth,
+        location
       };
     }
     
     return null;
-  }
-
-  /**
-   * Enhance sensor description with context
-   */
-  private enhanceDescription(originalData: string, context: string): string {
-    return `${originalData}\n\n📊 Context: ${context}`;
   }
 
   /**
@@ -314,11 +365,11 @@ export class GmailService {
 
         const headers = fullMessage.result.payload.headers;
         const subject = headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '';
-        const body = this.parseEmailBody(fullMessage.result.payload);
+        const { raw, location, cleanData } = this.parseEmailBody(fullMessage.result.payload);
         const internalDate = fullMessage.result.internalDate;
 
-        if (body.trim()) {
-          const sensorData = this.categorizeEmail(subject, body, internalDate);
+        if (cleanData.trim() || raw.trim()) {
+          const sensorData = this.categorizeEmail(subject, raw, internalDate, location, cleanData);
           if (sensorData) {
             sensorDataArray.push(sensorData);
           }
