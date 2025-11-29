@@ -10,12 +10,17 @@ import { createGmailService } from "@/services/gmailService";
 import type { SensorData } from "@/services/gmailService";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { SensorDataRecord } from "@/services/supabaseService";
+import { createBlynkService } from "@/services/blynkService";
+import type { SensorDataFromBlynk } from "@/services/blynkService";
 
 const GMAIL_API_KEY = "";
 const GMAIL_CLIENT_ID = "";
 const SUPABASE_URL = "";
 const SUPABASE_ANON_KEY = "";
-const BLYNK_API_URL = "https://blynk.cloud/external/api/logEvent?token=z5qJn_MTSXa_Sljdpt-oez5e200XOmPq&code=live_crop_growth";
+const BLYNK_SERVER = "https://fra1.blynk.cloud";
+const BLYNK_ACCESS_TOKEN = "";
+const BLYNK_TEMPLATE_ID = 1;
+const BLYNK_LOG_EVENT_TOKEN = "z5qJn_MTSXa_Sljdpt-oez5e200XOmPq";
 
 // Icon mapping helper
 const getIconForType = (type: string): React.ReactNode => {
@@ -63,6 +68,12 @@ const DataExtraction = () => {
   const [selectedMethod, setSelectedMethod] = useState<"gmail" | "blynk">("gmail");
   const [gmailService] = useState(() => createGmailService(GMAIL_API_KEY, GMAIL_CLIENT_ID));
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
+  const [blynkService] = useState(() => createBlynkService(
+    BLYNK_SERVER,
+    BLYNK_ACCESS_TOKEN,
+    BLYNK_TEMPLATE_ID,
+    BLYNK_LOG_EVENT_TOKEN
+  ));
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [savingToDb, setSavingToDb] = useState(false);
@@ -214,66 +225,44 @@ const DataExtraction = () => {
         description: "Connecting to Blynk Cloud...",
       });
 
-      // Fetch from Blynk Cloud API
-      const response = await fetch(BLYNK_API_URL);
+      // Fetch sensor data using the Blynk service
+      const result = await blynkService.fetchAllSensorData();
       
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // Parse Blynk response and create sensor data
-      const blynkData: SensorData[] = [];
-      
-      if (data && typeof data === 'object') {
-        const eventData = Array.isArray(data) ? data : [data];
-        
-        for (const event of eventData) {
-          const description = event.description || event.data || JSON.stringify(event);
-          
-          blynkData.push({
-            type: 'growth',
-            title: 'Live Crop Growth',
-            data: description,
-            timestamp: event.timestamp || new Date().toLocaleString('en-US', { 
-              year: 'numeric', 
-              month: '2-digit', 
-              day: '2-digit', 
-              hour: '2-digit', 
-              minute: '2-digit', 
-              second: '2-digit',
-              hour12: true
-            }),
-            sensorHealth: '100%',
-            icon: <Sprout className="h-5 w-5" />
-          });
-        }
-      }
-      
-      if (blynkData.length === 0) {
+      if (!result.success || !result.data || result.data.length === 0) {
         toast({
           title: "No New Data",
-          description: "Blynk API returned no new events.",
+          description: result.error || "No sensor data available from Blynk Cloud.",
         });
-      } else {
-        // Save to Supabase
-        await saveToSupabase(blynkData, 'blynk');
-        
-        // Reload from database to show merged data (no duplicates)
-        await loadFromDatabase();
-        
-        toast({
-          title: "Success",
-          description: `Fetched ${blynkData.length} events from Blynk Cloud`,
-        });
+        return;
       }
+
+      // Convert Blynk data to SensorData format
+      const blynkData: SensorData[] = result.data.map(item => ({
+        type: item.type,
+        title: item.title,
+        data: item.data,
+        timestamp: item.timestamp,
+        sensorHealth: item.sensorHealth,
+        location: item.location,
+        icon: getIconForType(item.type)
+      }));
+
+      // Save to Supabase
+      await saveToSupabase(blynkData, 'blynk');
+      
+      // Reload from database to show merged data (no duplicates)
+      await loadFromDatabase();
+      
+      toast({
+        title: "Success",
+        description: `Fetched ${blynkData.length} sensor readings from Blynk Cloud`,
+      });
     } catch (error: any) {
       console.error('Blynk extraction error:', error);
       
       toast({
         title: "Error",
-        description: "Unable to connect to Blynk Cloud",
+        description: error.message || "Unable to connect to Blynk Cloud",
         variant: "destructive",
       });
     } finally {
@@ -388,22 +377,27 @@ const DataExtraction = () => {
             </p>
           </div>
 
+          {/* Updated Compact Data Source Section */}
           <Card className="mb-8 glass-card max-w-3xl mx-auto hover-lift animate-slide-in-left">
-            <CardHeader>
-              <CardTitle className="text-2xl">Data Source</CardTitle>
-              <CardDescription>Choose extraction method and fetch new data</CardDescription>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Data Source
+              </CardTitle>
+              <CardDescription>Choose extraction method and fetch data</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="flex gap-4 mb-4">
+            <CardContent className="space-y-4">
+              {/* Method Selection - Compact Horizontal Layout */}
+              <div className="flex gap-3">
                 <Button 
                   onClick={() => setSelectedMethod("gmail")}
                   disabled={loading || loadingFromDb}
                   variant={selectedMethod === "gmail" ? "default" : "outline"}
-                  className={`flex-1 h-20 ${selectedMethod === "gmail" ? "bg-gradient-to-r from-primary to-secondary" : ""}`}
+                  className={`flex-1 h-12 ${selectedMethod === "gmail" ? "bg-gradient-to-r from-primary to-secondary shadow-lg" : "bg-muted/50"}`}
                 >
-                  <div className="flex flex-col items-center gap-2">
-                    <Mail className="h-6 w-6" />
-                    <span className="font-semibold">Gmail API</span>
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    <span className="font-medium">Gmail API</span>
                   </div>
                 </Button>
                 
@@ -411,30 +405,30 @@ const DataExtraction = () => {
                   onClick={() => setSelectedMethod("blynk")}
                   disabled={loading || loadingFromDb}
                   variant={selectedMethod === "blynk" ? "default" : "outline"}
-                  className={`flex-1 h-20 ${selectedMethod === "blynk" ? "bg-gradient-to-r from-secondary to-purple-500" : ""}`}
+                  className={`flex-1 h-12 ${selectedMethod === "blynk" ? "bg-gradient-to-r from-secondary to-purple-500 shadow-lg" : "bg-muted/50"}`}
                 >
-                  <div className="flex flex-col items-center gap-2">
-                    <Cloud className="h-6 w-6" />
-                    <span className="font-semibold">Blynk Cloud</span>
+                  <div className="flex items-center gap-2">
+                    <Cloud className="h-4 w-4" />
+                    <span className="font-medium">Blynk Cloud</span>
                   </div>
                 </Button>
               </div>
 
-              <div className="flex gap-4">
+              {/* Action Buttons - Wider and Better Spaced */}
+              <div className="flex gap-3">
                 <Button
                   onClick={handleFetchNewData}
                   disabled={loading || loadingFromDb || savingToDb}
-                  className="flex-1 bg-gradient-to-r from-green-600 to-blue-600 hover:opacity-90"
-                  size="lg"
+                  className="flex-[2] h-12 bg-gradient-to-r from-green-600 to-blue-600 hover:opacity-90 shadow-lg font-semibold"
                 >
                   {loading ? (
                     <>
-                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Fetching...
                     </>
                   ) : (
                     <>
-                      <RefreshCw className="h-5 w-5 mr-2" />
+                      <RefreshCw className="h-4 w-4 mr-2" />
                       Fetch New Data
                     </>
                   )}
@@ -444,28 +438,36 @@ const DataExtraction = () => {
                   onClick={loadFromDatabase}
                   disabled={loading || loadingFromDb || savingToDb}
                   variant="outline"
-                  size="lg"
+                  className="flex-1 h-12 border-primary/30 hover:bg-primary/5 font-medium"
                 >
                   {loadingFromDb ? (
                     <>
-                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Loading...
                     </>
                   ) : (
                     <>
-                      <Database className="h-5 w-5 mr-2" />
-                      Reload from DB
+                      <Database className="h-4 w-4 mr-2" />
+                      Reload DB
                     </>
                   )}
                 </Button>
               </div>
               
+              {/* Status Indicator */}
               {savingToDb && (
-                <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
-                  <Database className="h-4 w-4 animate-pulse" />
-                  <span className="text-sm">Saving to database...</span>
+                <div className="flex items-center justify-center gap-2 text-green-600 bg-green-50 py-2 px-3 rounded-lg border border-green-200">
+                  <Database className="h-3 w-3 animate-pulse" />
+                  <span className="text-sm font-medium">Saving to database...</span>
                 </div>
               )}
+
+              {/* Selected Method Indicator */}
+              <div className="text-center">
+                <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/20">
+                  Current: {selectedMethod === "gmail" ? "Gmail API" : "Blynk Cloud"}
+                </Badge>
+              </div>
             </CardContent>
           </Card>
 
