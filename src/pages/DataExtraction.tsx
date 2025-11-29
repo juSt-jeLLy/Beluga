@@ -15,12 +15,12 @@ import { createBlynkService } from "@/services/blynkService";
 const GMAIL_API_KEY = "";
 const GMAIL_CLIENT_ID = "";
 const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+const SUPABASE_ANON_KEY = "..";
 const BLYNK_API_URL = "";
 const BLYNK_SERVER = "https://fra1.blynk.cloud";
 const BLYNK_ACCESS_TOKEN = "";
 const BLYNK_TEMPLATE_ID = 1;
-const BLYNK_LOG_EVENT_TOKEN = "";
+const BLYNK_LOG_EVENT_TOKEN = "z5qJn_MTSXa_Sljdpt-oez5e200XOmPq";
 
 // Icon mapping helper
 const getIconForType = (type: string): React.ReactNode => {
@@ -365,145 +365,121 @@ const DataExtraction = () => {
         </div>
         
         <div className="container mx-auto px-4 relative z-10">
-          <div className="mb-8 text-center animate-slide-up">
-            <Badge className="mb-4 bg-primary/10 text-primary border-primary/20 animate-glow">
+          <div className="mb-6 text-center animate-slide-up">
+            <Badge className="mb-3 bg-primary/10 text-primary border-primary/20 animate-glow">
               Data Extraction
             </Badge>
-            <h1 className="text-5xl md:text-6xl font-bold mb-4">
+            <h1 className="text-4xl md:text-5xl font-bold mb-3">
               Extract <span className="gradient-text">Robot Data</span>
             </h1>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+            <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
               Retrieve agricultural sensor data from IoT devices
             </p>
           </div>
 
-          {/* Updated Compact Data Source Section */}
-          <Card className="mb-8 glass-card max-w-3xl mx-auto hover-lift animate-slide-in-left">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-xl flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Data Source
-              </CardTitle>
-              <CardDescription>Choose extraction method and fetch data</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Method Selection - Compact Horizontal Layout */}
-              <div className="flex gap-3">
-                <Button 
-                  onClick={() => setSelectedMethod("gmail")}
-                  disabled={loading || loadingFromDb}
-                  variant={selectedMethod === "gmail" ? "default" : "outline"}
-                  className={`flex-1 h-12 ${selectedMethod === "gmail" ? "bg-gradient-to-r from-primary to-secondary shadow-lg" : "bg-muted/50"}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    <span className="font-medium">Gmail API</span>
-                  </div>
-                </Button>
-                
-                <Button 
-                  onClick={() => setSelectedMethod("blynk")}
-                  disabled={loading || loadingFromDb}
-                  variant={selectedMethod === "blynk" ? "default" : "outline"}
-                  className={`flex-1 h-12 ${selectedMethod === "blynk" ? "bg-gradient-to-r from-secondary to-purple-500 shadow-lg" : "bg-muted/50"}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Cloud className="h-4 w-4" />
-                    <span className="font-medium">Blynk Cloud</span>
-                  </div>
-                </Button>
-              </div>
-
-              {/* Action Buttons - Wider and Better Spaced */}
-              <div className="flex gap-3">
-                <Button
-                  onClick={handleFetchNewData}
-                  disabled={loading || loadingFromDb || savingToDb}
-                  className="flex-[2] h-12 bg-gradient-to-r from-green-600 to-blue-600 hover:opacity-90 shadow-lg font-semibold"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Fetching...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Fetch New Data
-                    </>
-                  )}
-                </Button>
-
-                <Button
-                  onClick={loadFromDatabase}
-                  disabled={loading || loadingFromDb || savingToDb}
-                  variant="outline"
-                  className="flex-1 h-12 border-primary/30 hover:bg-primary/5 font-medium"
-                >
-                  {loadingFromDb ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      <Database className="h-4 w-4 mr-2" />
-                      Reload DB
-                    </>
-                  )}
-                </Button>
-              </div>
-              
-              {/* Status Indicator */}
-              {savingToDb && (
-                <div className="flex items-center justify-center gap-2 text-green-600 bg-green-50 py-2 px-3 rounded-lg border border-green-200">
-                  <Database className="h-3 w-3 animate-pulse" />
-                  <span className="text-sm font-medium">Saving to database...</span>
+          {/* Ultra Compact Data Source Section */}
+          <Card className="mb-6 glass-card max-w-2xl mx-auto hover-lift animate-slide-in-left">
+            <CardContent className="p-4">
+              <div className="space-y-3">
+                {/* Method Selection - Ultra Compact */}
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => setSelectedMethod("gmail")}
+                    disabled={loading || loadingFromDb}
+                    variant={selectedMethod === "gmail" ? "default" : "outline"}
+                    className={`flex-1 h-10 text-sm ${selectedMethod === "gmail" ? "bg-gradient-to-r from-primary to-secondary shadow-md" : "bg-muted/30"}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <Mail className="h-3 w-3" />
+                      <span>Gmail API</span>
+                    </div>
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => setSelectedMethod("blynk")}
+                    disabled={loading || loadingFromDb}
+                    variant={selectedMethod === "blynk" ? "default" : "outline"}
+                    className={`flex-1 h-10 text-sm ${selectedMethod === "blynk" ? "bg-gradient-to-r from-secondary to-purple-500 shadow-md" : "bg-muted/30"}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <Cloud className="h-3 w-3" />
+                      <span>Blynk Cloud</span>
+                    </div>
+                  </Button>
                 </div>
-              )}
 
-              {/* Selected Method Indicator */}
-              <div className="text-center">
-                <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/20">
-                  Current: {selectedMethod === "gmail" ? "Gmail API" : "Blynk Cloud"}
-                </Badge>
+                {/* Single Fetch Button - Centered */}
+                <div className="flex justify-center">
+                  <Button
+                    onClick={handleFetchNewData}
+                    disabled={loading || loadingFromDb || savingToDb}
+                    className="h-10 px-8 bg-gradient-to-r from-green-600 to-blue-600 hover:opacity-90 shadow-md font-medium"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                        Fetching...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-3 w-3 mr-2" />
+                        Fetch New Data
+                      </>
+                    )}
+                  </Button>
+                </div>
+                
+                {/* Status Indicator - Smaller */}
+                {savingToDb && (
+                  <div className="flex items-center justify-center gap-1 text-green-600 bg-green-50 py-1 px-2 rounded border border-green-200 text-xs">
+                    <Database className="h-2 w-2 animate-pulse" />
+                    <span>Saving to database...</span>
+                  </div>
+                )}
+
+                {/* Selected Method Indicator - Smaller */}
+                <div className="text-center">
+                  <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/20 text-xs">
+                    Current: {selectedMethod === "gmail" ? "Gmail API" : "Blynk Cloud"}
+                  </Badge>
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {!loading && !loadingFromDb && extractedData.length === 0 && initialLoadDone && (
-            <div className="text-center py-16 animate-slide-up">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
-                <AlertCircle className="h-10 w-10 text-muted-foreground" />
+            <div className="text-center py-12 animate-slide-up">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-3">
+                <AlertCircle className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h3 className="text-2xl font-semibold mb-2">No Data Available</h3>
-              <p className="text-muted-foreground max-w-md mx-auto mb-4">
+              <h3 className="text-xl font-semibold mb-2">No Data Available</h3>
+              <p className="text-muted-foreground max-w-md mx-auto mb-3 text-sm">
                 No sensor data found in the database.
               </p>
               <Button
                 onClick={handleFetchNewData}
-                className="bg-gradient-to-r from-primary to-secondary"
+                className="bg-gradient-to-r from-primary to-secondary text-sm h-9"
               >
-                <RefreshCw className="h-4 w-4 mr-2" />
+                <RefreshCw className="h-3 w-3 mr-1" />
                 Fetch Data from {selectedMethod === "gmail" ? "Gmail" : "Blynk Cloud"}
               </Button>
             </div>
           )}
 
           {(loadingFromDb) && (
-            <div className="text-center py-16">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-              <p className="text-muted-foreground">Loading sensor data...</p>
+            <div className="text-center py-12">
+              <Loader2 className="h-10 w-10 animate-spin mx-auto mb-3 text-primary" />
+              <p className="text-muted-foreground text-sm">Loading sensor data...</p>
             </div>
           )}
 
           {extractedData.length > 0 && !loadingFromDb && (
-            <div className="space-y-6 max-w-5xl mx-auto">
+            <div className="space-y-4 max-w-5xl mx-auto">
               <div className="text-center animate-slide-up">
-                <h2 className="text-3xl font-bold mb-2">
+                <h2 className="text-2xl font-bold mb-2">
                   Sensor <span className="gradient-text">Data</span>
                 </h2>
-                <p className="text-muted-foreground">Total: {extractedData.length} readings</p>
+                <p className="text-muted-foreground text-sm">Total: {extractedData.length} readings</p>
               </div>
               
               {extractedData.map((data, index) => {
@@ -517,46 +493,46 @@ const DataExtraction = () => {
                   className="glass-card hover-lift animate-slide-in-right"
                   style={{animationDelay: `${index * 0.05}s`}}
                 >
-                  <CardHeader>
-                    <div className="flex items-start justify-between flex-wrap gap-4">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
                           <div className="text-white">
                             {data.icon}
                           </div>
                         </div>
                         <div>
-                          <CardTitle className="text-xl">{data.title}</CardTitle>
+                          <CardTitle className="text-lg">{data.title}</CardTitle>
                           <CardDescription className="text-xs mt-1">
                             {data.timestamp}
                           </CardDescription>
                         </div>
                       </div>
-                      <div className="flex gap-2 items-center flex-wrap">
+                      <div className="flex gap-1 items-center flex-wrap">
                         {location && (
-                          <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
-                            <MapPin className="h-3 w-3 mr-1" />
+                          <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-xs">
+                            <MapPin className="h-2 w-2 mr-1" />
                             {location}
                           </Badge>
                         )}
-                        <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                        <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-xs">
                           Sensor: {data.sensorHealth}
                         </Badge>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="bg-muted/30 p-4 rounded-lg border border-border">
-                      <p className="text-sm font-mono leading-relaxed whitespace-pre-wrap">{data.data}</p>
+                  <CardContent className="space-y-3">
+                    <div className="bg-muted/30 p-3 rounded border border-border">
+                      <p className="text-xs font-mono leading-relaxed whitespace-pre-wrap">{data.data}</p>
                     </div>
-                    <div className="flex gap-2 pt-4 border-t border-border">
-                      <Button size="sm" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90">
+                    <div className="flex gap-1 pt-3 border-t border-border">
+                      <Button size="sm" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8">
                         Register as IP
                       </Button>
-                      <Button size="sm" variant="outline" className="border-primary/50">
+                      <Button size="sm" variant="outline" className="border-primary/50 text-xs h-8">
                         View History
                       </Button>
-                      <Button size="sm" variant="outline" className="border-secondary/50">
+                      <Button size="sm" variant="outline" className="border-secondary/50 text-xs h-8">
                         Export Data
                       </Button>
                     </div>
