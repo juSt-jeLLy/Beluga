@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { createHash } from 'crypto-browserify';
 import { toHex, Hex } from 'viem';
 import { PINATA_JWT, PINATA_API_URL } from './config';
 
@@ -52,36 +51,34 @@ export async function uploadFileToIPFS(content: string | Blob, filename: string)
   }
 }
 
-// Get hash from file
+// Get hash from file using Web Crypto API
 export async function getFileHash(file: File): Promise<Hex> {
   const arrayBuffer = await file.arrayBuffer();
   const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
   return toHex(new Uint8Array(hashBuffer), { size: 32 });
 }
 
-// Get hash from string content
+// Get hash from string content using Web Crypto API
 export async function getStringHash(content: string): Promise<Hex> {
   const buffer = new TextEncoder().encode(content);
   const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
   return toHex(new Uint8Array(hashBuffer), { size: 32 });
 }
 
-// Get hash from URL content
+// Get hash from URL content using Web Crypto API
 export async function getHashFromUrl(url: string): Promise<Hex> {
   try {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
-    const buffer = Buffer.from(response.data);
-    const hash = createHash('sha256').update(buffer).digest('hex');
-    return `0x${hash}` as Hex;
+    const hashBuffer = await crypto.subtle.digest('SHA-256', response.data);
+    return toHex(new Uint8Array(hashBuffer), { size: 32 });
   } catch (error) {
     console.error('Error getting hash from URL:', error);
     throw new Error('Failed to get hash from URL');
   }
 }
 
-// Get hash from JSON object
-export function getJSONHash(jsonObject: any): Hex {
+// Get hash from JSON object using Web Crypto API
+export async function getJSONHash(jsonObject: any): Promise<Hex> {
   const jsonString = JSON.stringify(jsonObject);
-  const hash = createHash('sha256').update(jsonString).digest('hex');
-  return `0x${hash}` as Hex;
+  return getStringHash(jsonString);
 }

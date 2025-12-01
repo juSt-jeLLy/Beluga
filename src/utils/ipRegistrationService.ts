@@ -111,9 +111,9 @@ export async function registerSensorDataAsIP(
     
     // 5. Upload metadata to IPFS
     const ipIpfsHash = await uploadJSONToIPFS(ipMetadata);
-    const ipHash = getJSONHash(ipMetadata);
+    const ipHash = await getJSONHash(ipMetadata);
     const nftIpfsHash = await uploadJSONToIPFS(nftMetadata);
-    const nftHash = getJSONHash(nftMetadata);
+    const nftHash = await getJSONHash(nftMetadata);
     
     // 6. Register IP Asset with PIL terms
     const response = await client.ipAsset.registerIpAsset({
@@ -126,7 +126,7 @@ export async function registerSensorDataAsIP(
           terms: PILFlavor.commercialRemix({
             commercialRevShare: 10, // 10% revenue share
             defaultMintingFee: parseEther('0.01'), // 0.01 IP tokens
-            currency: '0xB132A6B7AE652c974EE1557A3521D53d18F6739f', // WIP token on Aeneid
+            currency: '0x1514000000000000000000000000000000000000', // WIP token on Aeneid
           }),
         },
       ],
