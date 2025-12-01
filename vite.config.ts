@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     'process.env': '{}',
+    'process.cwd': 'function(){return"/"}',
     'process.platform': '"browser"',
     'process.version': '"v16.0.0"',
     global: 'globalThis',
