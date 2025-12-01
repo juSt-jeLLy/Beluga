@@ -12,6 +12,7 @@ export interface SensorData {
   timestamp: string;
   sensorHealth: string;
   location?: string;
+  imageHash?: string; // Add image hash field
   icon?: React.ReactNode;
 }
 
@@ -169,49 +170,185 @@ export class GmailService {
   }
 
   /**
+   * Extract CSV data from email body
+   */
+  private extractCSVData(body: string): { csvRows: string[][]; csvText: string } {
+    let csvText = '';
+    const csvRows: string[][] = [];
+
+    // Try to find CSV data in the email body
+    // Look for patterns like CSV lines with commas
+    const lines = body.split('\n');
+    const csvLines: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // Check if line looks like CSV (contains commas and not HTML)
+      if (trimmed && trimmed.includes(',') && !trimmed.startsWith('<') && !trimmed.endsWith('>')) {
+        csvLines.push(trimmed);
+      }
+    }
+
+    if (csvLines.length > 0) {
+      csvText = csvLines.join('\n');
+      
+      // Parse CSV rows
+      for (const line of csvLines) {
+        // Simple CSV parsing - split by comma but handle quoted values
+        const row: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            row.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        
+        // Add the last value
+        row.push(current.trim());
+        csvRows.push(row);
+      }
+    }
+
+    return { csvRows, csvText };
+  }
+
+  /**
+   * Extract location and image hash from CSV data
+   */
+  private extractCSVValues(csvRows: string[][]): { location: string; imageHash: string } {
+    let location = '';
+    let imageHash = '';
+
+    if (csvRows.length > 0) {
+      // Get the first row (assuming it's the data row)
+      const firstRow = csvRows[0];
+      
+      // First value is location
+      if (firstRow.length > 0) {
+        location = firstRow[0].trim();
+      }
+      
+      // Last value is image hash
+      if (firstRow.length > 1) {
+        imageHash = firstRow[firstRow.length - 1].trim();
+        
+        // Remove any quotes from the image hash
+        imageHash = imageHash.replace(/^["']|["']$/g, '');
+      }
+    }
+
+    return { location, imageHash };
+  }
+
+  /**
    * Extract clean data from HTML body
    */
-  private extractCleanData(htmlBody: string): { location: string; data: string } {
+  private extractCleanData(htmlBody: string): { 
+    location: string; 
+    data: string;
+    imageHash: string;
+    csvRows: string[][];
+    csvText: string;
+  } {
     let location = '';
     let data = '';
+    let imageHash = '';
+    let csvRows: string[][] = [];
+    let csvText = '';
 
-    // Extract content from <pre> tag (main data)
-    // Use a more robust regex that handles potential whitespace
-    const preMatch = htmlBody.match(/<pre>\s*(.*?)\s*<\/pre>/is);
+    // First, try to extract content from <pre> tag (main data)
+    const preMatch = htmlBody.match(/<pre>([\s\S]*?)<\/pre>/i);
     
     if (preMatch && preMatch[1]) {
       const preContent = preMatch[1].trim();
       
-      // Extract location (first word/phrase before comma)
-      const locationMatch = preContent.match(/^([^,]+),/);
-      if (locationMatch) {
-        location = locationMatch[1].trim();
-      }
+      // Extract CSV data
+      const csvData = this.extractCSVData(preContent);
+      csvRows = csvData.csvRows;
+      csvText = csvData.csvText;
+      
+      // Extract location and image hash from CSV
+      const csvValues = this.extractCSVValues(csvRows);
+      location = csvValues.location;
+      imageHash = csvValues.imageHash;
       
       // Get the full data from pre tag
       data = preContent;
+    } else {
+      // If no <pre> tag, try to extract CSV data from the entire HTML
+      const csvData = this.extractCSVData(htmlBody);
+      csvRows = csvData.csvRows;
+      csvText = csvData.csvText;
+      
+      // Extract location and image hash from CSV
+      const csvValues = this.extractCSVValues(csvRows);
+      location = csvValues.location;
+      imageHash = csvValues.imageHash;
+      
+      // Get text content from HTML
+      const textOnly = htmlBody
+        .replace(/<[^>]*>/g, ' ') // Replace tags with space
+        .replace(/\s+/g, ' ') // Collapse multiple spaces
+        .trim();
+      
+      data = textOnly;
     }
 
-    return { location, data };
+    return { location, data, imageHash, csvRows, csvText };
   }
 
   /**
    * Parse email body from payload
    */
-  private parseEmailBody(payload: any): { raw: string; location: string; cleanData: string } {
+  private parseEmailBody(payload: any): { 
+    raw: string; 
+    location: string; 
+    cleanData: string; 
+    imageHash: string;
+    csvRows: string[][];
+    csvText: string;
+  } {
     let rawBody = '';
     let location = '';
     let cleanData = '';
+    let imageHash = '';
+    let csvRows: string[][] = [];
+    let csvText = '';
     
     if (payload.body?.data) {
       const decoded = this.decodeBase64(payload.body.data);
       rawBody = decoded;
       
       // Try to extract clean data if it's HTML
-      if (decoded.includes('<pre>')) {
+      if (decoded.includes('<')) {
         const extracted = this.extractCleanData(decoded);
         location = extracted.location;
         cleanData = extracted.data;
+        imageHash = extracted.imageHash;
+        csvRows = extracted.csvRows;
+        csvText = extracted.csvText;
+      } else {
+        // If it's plain text, extract CSV data
+        const csvData = this.extractCSVData(decoded);
+        csvRows = csvData.csvRows;
+        csvText = csvData.csvText;
+        
+        // Extract location and image hash from CSV
+        const csvValues = this.extractCSVValues(csvRows);
+        location = csvValues.location;
+        imageHash = csvValues.imageHash;
+        
+        // Use plain text as clean data
+        cleanData = decoded;
       }
     } else if (payload.parts) {
       for (const part of payload.parts) {
@@ -219,16 +356,33 @@ export class GmailService {
           const htmlBody = this.decodeBase64(part.body.data);
           rawBody = htmlBody;
           
-          // Extract clean data and location from HTML
+          // Extract clean data and CSV values from HTML
           const extracted = this.extractCleanData(htmlBody);
           location = extracted.location;
           cleanData = extracted.data;
+          imageHash = extracted.imageHash;
+          csvRows = extracted.csvRows;
+          csvText = extracted.csvText;
           
           // If we found clean data, we're done
           if (cleanData) break;
         } else if (part.mimeType === 'text/plain' && part.body?.data) {
-          if (!rawBody) {
-            rawBody = this.decodeBase64(part.body.data);
+          const plainText = this.decodeBase64(part.body.data);
+          rawBody = plainText;
+          
+          // Extract CSV data from plain text
+          const csvData = this.extractCSVData(plainText);
+          csvRows = csvData.csvRows;
+          csvText = csvData.csvText;
+          
+          // Extract location and image hash from CSV
+          const csvValues = this.extractCSVValues(csvRows);
+          location = csvValues.location;
+          imageHash = csvValues.imageHash;
+          
+          // Use plain text as clean data
+          if (!cleanData) {
+            cleanData = plainText;
           }
         } else if (part.parts) {
           // Recursive search for nested parts
@@ -237,13 +391,37 @@ export class GmailService {
             rawBody = result.raw;
             location = result.location;
             cleanData = result.cleanData;
+            imageHash = result.imageHash;
+            csvRows = result.csvRows;
+            csvText = result.csvText;
             if (cleanData) break;
           }
         }
       }
     }
     
-    return { raw: rawBody, location, cleanData };
+    // If we still don't have clean data, use raw body
+    if (!cleanData.trim() && rawBody.trim()) {
+      cleanData = rawBody;
+    }
+    
+    // If we don't have image hash from CSV, try to extract from the raw body
+    if (!imageHash && rawBody) {
+      // Look for IPFS hash patterns (Qm... or bafy...)
+      const ipfsHashMatch = rawBody.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})/);
+      if (ipfsHashMatch) {
+        imageHash = ipfsHashMatch[0];
+      }
+    }
+    
+    return { 
+      raw: rawBody, 
+      location, 
+      cleanData, 
+      imageHash,
+      csvRows,
+      csvText
+    };
   }
 
   /**
@@ -257,7 +435,14 @@ export class GmailService {
   /**
    * Categorize email based on subject line
    */
-  categorizeEmail(subject: string, body: string, internalDate: string, location: string, cleanData: string): Omit<SensorData, 'icon'> | null {
+  categorizeEmail(
+    subject: string, 
+    body: string, 
+    internalDate: string, 
+    location: string, 
+    cleanData: string,
+    imageHash: string
+  ): Omit<SensorData, 'icon'> | null {
     const lowerSubject = subject.toLowerCase();
     const timestamp = new Date(parseInt(internalDate)).toLocaleString('en-US', { 
       year: 'numeric', 
@@ -269,17 +454,41 @@ export class GmailService {
       hour12: true
     });
 
-    // Use clean data if available, otherwise fall back to raw body
-    const displayData = cleanData && cleanData.trim() ? cleanData : body;
+    // Use clean data if available, otherwise use raw body
+    let displayData = body;
+    
+    if (cleanData && cleanData.trim()) {
+      displayData = cleanData;
+      
+      // Add location info if not already in the clean data
+      if (location && !cleanData.includes(location)) {
+        displayData = `Location: ${location}\n\n${cleanData}`;
+      }
+    }
+    
+    // Add image hash to display data if available
+    if (imageHash) {
+      displayData += `\n\nImage Hash: ${imageHash}`;
+    }
+    
+    // Ensure we have at least 200 characters or the full text
+    if (displayData.length < 200 && body.length > displayData.length) {
+      displayData = body;
+    }
+    
     const sensorHealth = this.extractSensorHealth(displayData);
 
-    // Debug logging
+    // Debug logging to see what we're getting
     console.log('Email categorization:', {
       subject: lowerSubject,
       hasCleanData: !!cleanData,
       cleanDataLength: cleanData?.length || 0,
+      rawBodyLength: body.length,
+      displayDataLength: displayData.length,
       location,
-      sensorHealth
+      imageHash,
+      sensorHealth,
+      preview: displayData.substring(0, 200) + '...'
     });
 
     if (lowerSubject.includes('temperature') || lowerSubject.includes('humidity')) {
@@ -289,7 +498,8 @@ export class GmailService {
         data: displayData,
         timestamp,
         sensorHealth,
-        location
+        location: location || 'Unknown',
+        imageHash: imageHash || undefined
       };
     } else if (lowerSubject.includes('sunlight')) {
       return {
@@ -298,7 +508,8 @@ export class GmailService {
         data: displayData,
         timestamp,
         sensorHealth,
-        location
+        location: location || 'Unknown',
+        imageHash: imageHash || undefined
       };
     } else if (lowerSubject.includes('moisture')) {
       return {
@@ -307,7 +518,8 @@ export class GmailService {
         data: displayData,
         timestamp,
         sensorHealth,
-        location
+        location: location || 'Unknown',
+        imageHash: imageHash || undefined
       };
     } else if (lowerSubject.includes('crop growth') || lowerSubject.includes('growth')) {
       return {
@@ -316,7 +528,8 @@ export class GmailService {
         data: displayData,
         timestamp,
         sensorHealth,
-        location
+        location: location || 'Unknown',
+        imageHash: imageHash || undefined
       };
     } else if (lowerSubject.includes('rainfall') || lowerSubject.includes('rain')) {
       return {
@@ -325,11 +538,21 @@ export class GmailService {
         data: displayData,
         timestamp,
         sensorHealth,
-        location
+        location: location || 'Unknown',
+        imageHash: imageHash || undefined
       };
     }
     
-    return null;
+    // If no specific category, still save with a generic type
+    return {
+      type: 'general',
+      title: 'Sensor Data',
+      data: displayData,
+      timestamp,
+      sensorHealth,
+      location: location || 'Unknown',
+      imageHash: imageHash || undefined
+    };
   }
 
   /**
@@ -349,14 +572,19 @@ export class GmailService {
     const messages = response.result.messages || [];
     
     if (messages.length === 0) {
+      console.log('No messages found for the given criteria');
       return [];
     }
 
+    console.log(`Found ${messages.length} messages to process`);
+    
     // Fetch full details for each message
     const sensorDataArray: Omit<SensorData, 'icon'>[] = [];
     
     for (const message of messages) {
       try {
+        console.log(`Processing message: ${message.id}`);
+        
         const fullMessage = await gapi.client.gmail.users.messages.get({
           userId: 'me',
           id: message.id,
@@ -365,20 +593,56 @@ export class GmailService {
 
         const headers = fullMessage.result.payload.headers;
         const subject = headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '';
-        const { raw, location, cleanData } = this.parseEmailBody(fullMessage.result.payload);
+        const { 
+          raw, 
+          location, 
+          cleanData, 
+          imageHash,
+          csvRows,
+          csvText 
+        } = this.parseEmailBody(fullMessage.result.payload);
         const internalDate = fullMessage.result.internalDate;
 
-        if (cleanData.trim() || raw.trim()) {
-          const sensorData = this.categorizeEmail(subject, raw, internalDate, location, cleanData);
+        console.log(`Extracted data for message ${message.id}:`, {
+          subject,
+          location,
+          imageHash,
+          csvRowsFound: csvRows.length,
+          csvTextLength: csvText.length,
+          cleanDataLength: cleanData?.length || 0,
+          rawLength: raw?.length || 0,
+          hasData: !!(cleanData?.trim() || raw?.trim())
+        });
+
+        if (cleanData?.trim() || raw?.trim()) {
+          const sensorData = this.categorizeEmail(
+            subject, 
+            raw, 
+            internalDate, 
+            location, 
+            cleanData,
+            imageHash
+          );
+          
           if (sensorData) {
+            console.log(`Categorized as: ${sensorData.type} - ${sensorData.title}`);
+            console.log(`Location: ${sensorData.location}`);
+            console.log(`Image Hash: ${sensorData.imageHash}`);
+            console.log(`Data preview: ${sensorData.data.substring(0, 100)}...`);
             sensorDataArray.push(sensorData);
+          } else {
+            console.log(`Could not categorize message: ${subject}`);
           }
+        } else {
+          console.log(`No usable data found in message: ${message.id}`);
         }
       } catch (error) {
         console.error(`Error fetching message ${message.id}:`, error);
       }
     }
 
+    console.log(`Processed ${sensorDataArray.length} sensor data entries`);
+    
     // Sort by timestamp (most recent first)
     sensorDataArray.sort((a, b) => {
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
@@ -407,6 +671,28 @@ export class GmailService {
       gapi.client.setToken(null);
       this.accessToken = null;
     }
+  }
+
+  /**
+   * Utility method to parse CSV data from a string
+   */
+  parseCSV(csvString: string): { location: string; imageHash: string; allValues: string[] } {
+    const lines = csvString.split('\n').filter(line => line.trim());
+    const location = '';
+    const imageHash = '';
+    
+    if (lines.length > 0) {
+      const firstLine = lines[0];
+      const values = firstLine.split(',').map(v => v.trim().replace(/^["']|["']$/g, ''));
+      
+      return {
+        location: values.length > 0 ? values[0] : '',
+        imageHash: values.length > 0 ? values[values.length - 1] : '',
+        allValues: values
+      };
+    }
+    
+    return { location, imageHash, allValues: [] };
   }
 }
 

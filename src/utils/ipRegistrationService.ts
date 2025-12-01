@@ -55,10 +55,11 @@ export async function registerSensorDataAsIP(
     // Get hash of character file
     const characterFileHashHex = await getStringHash(characterFileContent);
     
-    // 2. Prepare image (use default sensor icon if no image provided)
-    const finalImageUrl = imageUrl || `https://api.dicebear.com/7.x/shapes/svg?seed=${sensorData.type}`;
-    const imageHash = await getHashFromUrl(finalImageUrl);
-    
+    // 2. Use image hash from sensor data
+    const finalImageUrl = `https://ipfs.io/ipfs/${sensorData.imageHash}`;
+const imageHash = sensorData.imageHash.startsWith('0x') 
+  ? sensorData.imageHash as `0x${string}`
+  : `0x${sensorData.imageHash}` as `0x${string}`;    
     // 3. Create IP Metadata with AI metadata
     const ipMetadata: IpMetadata = client.ipAsset.generateIpMetadata({
       title: sensorData.title,
@@ -188,7 +189,6 @@ export function useIPRegistration(supabaseService?: SupabaseService) {
           location,
           creatorName,
           creatorAddress: address,
-          imageUrl,
         },
         walletClient
       );

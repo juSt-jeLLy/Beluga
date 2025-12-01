@@ -21,6 +21,7 @@ export interface SensorDataRecord {
   registered_at?: string;
   transaction_hash?: string;
   license_terms_ids?: string[];
+  image_hash?: string; // ADD THIS LINE
   
   created_at?: string;
   updated_at?: string;
