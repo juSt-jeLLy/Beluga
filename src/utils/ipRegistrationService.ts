@@ -25,6 +25,10 @@ export interface IPRegistrationResult {
   ipId?: string;
   txHash?: string;
   licenseTermsIds?: bigint[];
+  ownerAddress?: string;
+  characterFileUrl?: string;
+  ipMetadataUri?: string;
+  nftMetadataUri?: string;
   error?: string;
 }
 
@@ -115,6 +119,9 @@ export async function registerSensorDataAsIP(
     const nftIpfsHash = await uploadJSONToIPFS(nftMetadata);
     const nftHash = await getJSONHash(nftMetadata);
     
+    const ipMetadataUri = `https://ipfs.io/ipfs/${ipIpfsHash}`;
+    const nftMetadataUri = `https://ipfs.io/ipfs/${nftIpfsHash}`;
+    
     // 6. Register IP Asset with PIL terms
     const response = await client.ipAsset.registerIpAsset({
       nft: { 
@@ -131,9 +138,9 @@ export async function registerSensorDataAsIP(
         },
       ],
       ipMetadata: {
-        ipMetadataURI: `https://ipfs.io/ipfs/${ipIpfsHash}`,
+        ipMetadataURI: ipMetadataUri,
         ipMetadataHash: ipHash,
-        nftMetadataURI: `https://ipfs.io/ipfs/${nftIpfsHash}`,
+        nftMetadataURI: nftMetadataUri,
         nftMetadataHash: nftHash,
       },
     });
@@ -143,6 +150,10 @@ export async function registerSensorDataAsIP(
       ipId: response.ipId,
       txHash: response.txHash,
       licenseTermsIds: response.licenseTermsIds,
+      ownerAddress: creatorAddress,
+      characterFileUrl: characterFileUrl,
+      ipMetadataUri: ipMetadataUri,
+      nftMetadataUri: nftMetadataUri,
     };
     
   } catch (error: any) {
