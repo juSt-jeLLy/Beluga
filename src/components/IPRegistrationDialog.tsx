@@ -8,18 +8,12 @@ import { useIPRegistration } from '@/utils/ipRegistrationService';
 import { SensorData } from '@/services/gmailService';
 import { Loader2, CheckCircle, XCircle, ExternalLink, Sparkles, Upload, FileCheck, Coins, Shield, Zap, Info } from 'lucide-react';
 import { networkInfo } from '@/utils/config';
-import { createSupabaseService } from '@/services/supabaseService';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 interface IPRegistrationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sensorData: SensorData | null;
   location: string;
-  sensorDataId?: number;
-  onRegistrationComplete?: () => void;
 }
 
 const ProcessingDialog = ({ 
@@ -41,6 +35,7 @@ const ProcessingDialog = ({
     <Dialog open={open} onOpenChange={() => {}}>
       <DialogContent className="max-w-[900px] border-none bg-gradient-to-br from-background via-primary/5 to-secondary/5 backdrop-blur-xl p-6">
         <div className="space-y-8">
+          {/* Header Section - More Compact */}
           <div className="flex items-center gap-4">
             <div className="relative flex-shrink-0">
               <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary rounded-full blur-xl opacity-50 animate-pulse"></div>
@@ -61,7 +56,9 @@ const ProcessingDialog = ({
             </div>
           </div>
 
+          {/* Progress Steps - Horizontal Timeline */}
           <div className="relative">
+            {/* Progress Line */}
             <div className="absolute top-6 left-0 right-0 h-0.5 bg-muted/30 z-0">
               <div 
                 className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-1000 ease-in-out"
@@ -69,9 +66,11 @@ const ProcessingDialog = ({
               />
             </div>
 
+            {/* Steps Container */}
             <div className="relative flex justify-between z-10">
               {steps.map((step, index) => (
                 <div key={index} className="flex flex-col items-center">
+                  {/* Step Circle */}
                   <div className="relative mb-3">
                     <div 
                       className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-500 ${
@@ -94,6 +93,7 @@ const ProcessingDialog = ({
                       )}
                     </div>
                     
+                    {/* Current Step Indicator */}
                     {index === currentStep && (
                       <div className="absolute -top-1 -right-1">
                         <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg">
@@ -103,6 +103,7 @@ const ProcessingDialog = ({
                     )}
                   </div>
 
+                  {/* Step Label */}
                   <div className="text-center max-w-[100px]">
                     <p className={`text-xs font-semibold transition-all ${
                       index <= currentStep ? 'text-foreground' : 'text-muted-foreground'
@@ -122,6 +123,7 @@ const ProcessingDialog = ({
             </div>
           </div>
 
+          {/* Progress Percentage */}
           <div className="flex justify-between items-center">
             <div className="text-sm text-muted-foreground">
               Step {currentStep + 1} of {steps.length}
@@ -134,6 +136,7 @@ const ProcessingDialog = ({
             </div>
           </div>
 
+          {/* Progress Bar */}
           <div className="w-full h-2 bg-muted/30 rounded-full overflow-hidden">
             <div 
               className="h-full bg-gradient-to-r from-primary via-secondary to-primary transition-all duration-1000 ease-in-out"
@@ -141,6 +144,7 @@ const ProcessingDialog = ({
             />
           </div>
 
+          {/* Status Message */}
           <div className="text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
               <Sparkles className="h-3 w-3 text-primary animate-pulse" />
@@ -162,9 +166,7 @@ export default function IPRegistrationDialog({
   open, 
   onOpenChange, 
   sensorData, 
-  location,
-  sensorDataId,
-  onRegistrationComplete
+  location 
 }: IPRegistrationDialogProps) {
   const [creatorName, setCreatorName] = useState('');
   const [revenueShare, setRevenueShare] = useState('10');
@@ -180,17 +182,9 @@ export default function IPRegistrationDialog({
   
   const { toast } = useToast();
   const { registerIP, isConnected } = useIPRegistration();
-  const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
 
   const handleRegister = async () => {
-    if (!sensorData || !sensorDataId) {
-      toast({
-        title: 'Missing Data',
-        description: 'Sensor data information is required',
-        variant: 'destructive',
-      });
-      return;
-    }
+    if (!sensorData) return;
     
     if (!creatorName.trim()) {
       toast({
@@ -249,35 +243,6 @@ export default function IPRegistrationDialog({
         undefined
       );
 
-      if (result.success && result.ipId && result.txHash) {
-        // Save to database
-        const storyExplorerUrl = `${networkInfo.protocolExplorer}/ipa/${result.ipId}`;
-        
-        const dbResult = await supabaseService.insertIPRegistration({
-          sensor_data_id: sensorDataId,
-          ip_asset_id: result.ipId,
-          owner_address: result.ownerAddress || '',
-          tx_hash: result.txHash,
-          story_explorer_url: storyExplorerUrl,
-          creator_name: creatorName.trim(),
-          revenue_share: revenueNum,
-          minting_fee: mintingFee,
-          license_terms_ids: result.licenseTermsIds?.map(id => id.toString()),
-          character_file_url: result.characterFileUrl,
-          ip_metadata_uri: result.ipMetadataUri,
-          nft_metadata_uri: result.nftMetadataUri,
-        });
-
-        if (!dbResult.success) {
-          console.error('Failed to save to database:', dbResult.error);
-          toast({
-            title: 'Warning',
-            description: 'IP registered but failed to save to database',
-            variant: 'destructive',
-          });
-        }
-      }
-
       setRegistrationResult(result);
 
       if (result.success) {
@@ -285,11 +250,6 @@ export default function IPRegistrationDialog({
           title: 'IP Registered Successfully! 🎉',
           description: `IP ID: ${result.ipId?.slice(0, 10)}...`,
         });
-        
-        // Call the callback to refresh data
-        if (onRegistrationComplete) {
-          onRegistrationComplete();
-        }
       } else {
         toast({
           title: 'Registration Failed',
@@ -334,6 +294,7 @@ export default function IPRegistrationDialog({
           
           {!registrationResult ? (
             <div className="flex gap-8">
+              {/* Left Column - Sensor Info & Creator Name */}
               <div className="flex-1 space-y-6">
                 <div>
                   <DialogHeader className="space-y-3 mb-6">
@@ -350,6 +311,7 @@ export default function IPRegistrationDialog({
                     </DialogDescription>
                   </DialogHeader>
 
+                  {/* Sensor Information Card */}
                   <div className="p-5 rounded-xl bg-gradient-to-br from-muted/50 via-muted/30 to-transparent border-2 border-border">
                     <div className="flex items-center gap-2 text-sm font-semibold text-primary mb-3">
                       <Zap className="h-4 w-4" />
@@ -371,6 +333,7 @@ export default function IPRegistrationDialog({
                     </div>
                   </div>
 
+                  {/* Creator Name Input */}
                   <div className="space-y-2">
                     <Label htmlFor="creator-name" className="text-sm font-semibold flex items-center gap-2">
                       Creator Name <span className="text-red-500">*</span>
@@ -386,7 +349,9 @@ export default function IPRegistrationDialog({
                 </div>
               </div>
 
+              {/* Right Column - License Configuration & Benefits */}
               <div className="flex-1 space-y-6">
+                {/* License Configuration */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-primary">
                     <Shield className="h-4 w-4" />
@@ -439,6 +404,7 @@ export default function IPRegistrationDialog({
                   </div>
                 </div>
 
+                {/* License Benefits Card */}
                 <div className="p-5 rounded-xl bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 border-2 border-primary/30">
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
@@ -464,6 +430,7 @@ export default function IPRegistrationDialog({
                   </div>
                 </div>
 
+                {/* Info Card */}
                 <div className="p-4 rounded-xl bg-muted/30 border border-border">
                   <div className="flex items-start gap-2">
                     <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
@@ -473,6 +440,7 @@ export default function IPRegistrationDialog({
                   </div>
                 </div>
 
+                {/* Action Buttons */}
                 <DialogFooter className="pt-4">
                   <div className="flex gap-3 w-full">
                     <Button 
@@ -504,7 +472,9 @@ export default function IPRegistrationDialog({
               </div>
             </div>
           ) : (
+            /* Success/Failure State - Horizontal Layout */
             <div className="flex gap-8">
+              {/* Left Column - Status Icon & Message */}
               <div className="flex-1 flex flex-col items-center justify-center space-y-6">
                 {registrationResult.success ? (
                   <>
@@ -542,6 +512,7 @@ export default function IPRegistrationDialog({
                 )}
               </div>
 
+              {/* Right Column - Details & Actions */}
               <div className="flex-1 space-y-6">
                 <div>
                   <h4 className="text-lg font-semibold mb-4">
