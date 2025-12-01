@@ -13,6 +13,12 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+            'crypto': 'crypto-browserify',
+
     },
+  },
+    define: {
+    'process.env': {},
+    global: 'globalThis',
   },
 }));

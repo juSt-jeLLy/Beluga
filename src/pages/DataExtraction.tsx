@@ -11,6 +11,7 @@ import type { SensorData } from "@/services/gmailService";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { SensorDataRecord } from "@/services/supabaseService";
 import { createBlynkService } from "@/services/blynkService";
+import IPRegistrationDialog from "@/components/IPRegistrationDialog";
 
 const GMAIL_API_KEY = import.meta.env.VITE_GMAIL_API_KEY;
 const GMAIL_CLIENT_ID = import.meta.env.VITE_GMAIL_CLIENT_ID ;
@@ -57,6 +58,19 @@ const convertToDisplayData = (record: SensorDataRecord): SensorData => {
     sensorHealth: record.sensor_health,
     icon: getIconForType(record.type)
   };
+};
+
+const [selectedSensorForIP, setSelectedSensorForIP] = useState<{
+  data: SensorData;
+  location: string;
+} | null>(null);
+const [ipDialogOpen, setIpDialogOpen] = useState(false);
+
+// Add this handler function:
+
+const handleRegisterAsIP = (data: SensorData, location: string) => {
+  setSelectedSensorForIP({ data, location });
+  setIpDialogOpen(true);
 };
 
 const DataExtraction = () => {
@@ -559,8 +573,12 @@ const DataExtraction = () => {
                       </div>
                     </div>
                     <div className="flex gap-1 pt-3 border-t border-border">
-                      <Button size="sm" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8">
-                        Register as IP
+                      <Button 
+                          size="sm" 
+                          className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8"
+                          onClick={() => handleRegisterAsIP(data, location)}
+                    >
+                      Register as IP
                       </Button>
                       <Button size="sm" variant="outline" className="border-primary/50 text-xs h-8">
                         View History
@@ -579,6 +597,12 @@ const DataExtraction = () => {
         <div className="absolute top-1/4 right-10 w-64 h-64 bg-primary/10 rounded-full blur-3xl animate-float"></div>
         <div className="absolute bottom-1/4 left-10 w-72 h-72 bg-secondary/10 rounded-full blur-3xl animate-float" style={{animationDelay: '2s'}}></div>
       </div>
+            <IPRegistrationDialog
+        open={ipDialogOpen}
+        onOpenChange={setIpDialogOpen}
+        sensorData={selectedSensorForIP?.data || null}
+        location={selectedSensorForIP?.location || ''}
+      />
     </div>
   );
 };
