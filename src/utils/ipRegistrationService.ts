@@ -1,8 +1,9 @@
+// ipRegistrationService.ts
 import { IpMetadata, PILFlavor } from '@story-protocol/core-sdk';
 import { parseEther, Address } from 'viem';
 import { useWalletClient, useAccount } from 'wagmi';
 import { SensorData } from '@/services/gmailService';
-import { createStoryClient, SPGNFTContractAddress } from './config';
+import { createStoryClient, SPGNFTContractAddress, networkInfo } from './config';
 import { 
   uploadJSONToIPFS, 
   uploadFileToIPFS, 
@@ -11,6 +12,7 @@ import {
   getStringHash 
 } from './uploadToIpfs';
 import { generateCharacterFileForSensorData } from './generateCharacterFile';
+import { SupabaseService } from '@/services/supabaseService';
 
 export interface IPRegistrationParams {
   sensorData: SensorData;
@@ -25,6 +27,7 @@ export interface IPRegistrationResult {
   ipId?: string;
   txHash?: string;
   licenseTermsIds?: bigint[];
+  storyExplorerUrl?: string;
   error?: string;
 }
 
@@ -138,11 +141,15 @@ export async function registerSensorDataAsIP(
       },
     });
     
+    // 7. Generate Story Explorer URL AFTER successful registration
+    const storyExplorerUrl = `${networkInfo.protocolExplorer}/ipa/${response.ipId}`;
+    
     return {
       success: true,
       ipId: response.ipId,
       txHash: response.txHash,
       licenseTermsIds: response.licenseTermsIds,
+      storyExplorerUrl: storyExplorerUrl,
     };
     
   } catch (error: any) {
@@ -155,7 +162,7 @@ export async function registerSensorDataAsIP(
 }
 
 // Hook to use in React components
-export function useIPRegistration() {
+export function useIPRegistration(supabaseService?: SupabaseService) {
   const { data: walletClient } = useWalletClient();
   const { address } = useAccount();
   
@@ -163,7 +170,8 @@ export function useIPRegistration() {
     sensorData: SensorData,
     location: string,
     creatorName: string,
-    imageUrl?: string
+    imageUrl?: string,
+    sensorDataId?: number
   ): Promise<IPRegistrationResult> => {
     if (!walletClient || !address) {
       return {
@@ -172,16 +180,59 @@ export function useIPRegistration() {
       };
     }
     
-    return registerSensorDataAsIP(
-      {
-        sensorData,
-        location,
-        creatorName,
-        creatorAddress: address,
-        imageUrl,
-      },
-      walletClient
-    );
+    try {
+      // 1. First, register IP on Story Protocol
+      const registrationResult = await registerSensorDataAsIP(
+        {
+          sensorData,
+          location,
+          creatorName,
+          creatorAddress: address,
+          imageUrl,
+        },
+        walletClient
+      );
+      
+      // 2. Only save to database if registration was successful AND we have sensorDataId
+      if (registrationResult.success && sensorDataId && supabaseService) {
+        try {
+          // Convert licenseTermsIds from bigint[] to string[] for JSON storage
+          const licenseTermsIds = registrationResult.licenseTermsIds?.map(id => id.toString());
+          
+          // Save IP registration data to database
+          const saveResult = await supabaseService.saveIPRegistrationData(
+            sensorDataId,
+            {
+              creator_address: address,
+              ip_asset_id: registrationResult.ipId!,
+              story_explorer_url: registrationResult.storyExplorerUrl!,
+              transaction_hash: registrationResult.txHash,
+              license_terms_ids: licenseTermsIds,
+            }
+          );
+          
+          if (!saveResult.success) {
+            console.warn('IP registration succeeded but failed to save to database:', saveResult.error);
+            // You might want to queue this for retry or show a warning to user
+          } else {
+            console.log('IP registration data saved to database successfully');
+          }
+        } catch (dbError: any) {
+          console.error('Database save error:', dbError);
+          // Don't fail the whole registration if database save fails
+          // The blockchain registration was successful
+        }
+      }
+      
+      return registrationResult;
+      
+    } catch (error: any) {
+      console.error('Registration process error:', error);
+      return {
+        success: false,
+        error: error.message || 'Registration failed',
+      };
+    }
   };
   
   return { registerIP, isConnected: !!walletClient && !!address };

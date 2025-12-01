@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Cloud, Thermometer, Sun, Droplets, Sprout, CloudRain, AlertCircle, Loader2, MapPin, Database, RefreshCw } from "lucide-react";
+import { Mail, Cloud, Thermometer, Sun, Droplets, Sprout, CloudRain, AlertCircle, Loader2, MapPin, Database, RefreshCw, CheckCircle, ExternalLink } from "lucide-react";
 import dataPatternBg from "@/assets/data-pattern.jpg";
 import { createGmailService } from "@/services/gmailService";
 import type { SensorData } from "@/services/gmailService";
@@ -21,6 +21,16 @@ const BLYNK_API_URL = import.meta.env.VITE_BLYNK_API_URL;
 const BLYNK_SERVER = import.meta.env.VITE_BLYNK_SERVER;
 const BLYNK_ACCESS_TOKEN = import.meta.env.VITE_BLYNK_ACCESS_TOKEN;
 const BLYNK_TEMPLATE_ID = parseInt(import.meta.env.VITE_BLYNK_TEMPLATE_ID);
+
+// Define extended interface to include database ID and IP registration status
+interface SensorDataWithId extends SensorData {
+  id?: number; // Database ID
+  icon?: React.ReactNode;
+  isRegistered?: boolean; // IP registration status
+  ip_asset_id?: string; // IP Asset ID if registered
+  story_explorer_url?: string; // Story Explorer URL if registered
+  registered_at?: string; // Registration timestamp
+}
 
 const getIconForType = (type: string): React.ReactNode => {
   switch (type) {
@@ -39,8 +49,9 @@ const getIconForType = (type: string): React.ReactNode => {
   }
 };
 
-const convertToDisplayData = (record: SensorDataRecord): SensorData => {
+const convertToDisplayData = (record: SensorDataRecord): SensorDataWithId => {
   return {
+    id: record.id, // Store the database ID
     type: record.type,
     title: record.title,
     data: record.data,
@@ -55,14 +66,18 @@ const convertToDisplayData = (record: SensorDataRecord): SensorData => {
       hour12: true
     }),
     sensorHealth: record.sensor_health,
-    icon: getIconForType(record.type)
+    icon: getIconForType(record.type),
+    isRegistered: !!record.ip_asset_id, // Check if IP registered
+    ip_asset_id: record.ip_asset_id, // IP Asset ID
+    story_explorer_url: record.story_explorer_url, // Story Explorer URL
+    registered_at: record.registered_at // Registration timestamp
   };
 };
 
 const DataExtraction = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [extractedData, setExtractedData] = useState<SensorData[]>([]);
+  const [extractedData, setExtractedData] = useState<SensorDataWithId[]>([]); // Use extended type
   const [selectedMethod, setSelectedMethod] = useState<"gmail" | "blynk">("gmail");
   const [gmailService] = useState(() => createGmailService(GMAIL_API_KEY, GMAIL_CLIENT_ID));
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
@@ -76,10 +91,11 @@ const DataExtraction = () => {
   const [savingToDb, setSavingToDb] = useState(false);
   const [loadingFromDb, setLoadingFromDb] = useState(false);
   const [selectedSensorForIP, setSelectedSensorForIP] = useState<{
-    data: SensorData;
+    data: SensorDataWithId;
     location: string;
   } | null>(null);
   const [ipDialogOpen, setIpDialogOpen] = useState(false);
+  const [originalRecords, setOriginalRecords] = useState<SensorDataRecord[]>([]); // Store original records with IDs
 
   useEffect(() => {
     const loadScripts = async () => {
@@ -115,6 +131,7 @@ const DataExtraction = () => {
       });
 
       if (result.success && result.data && result.data.length > 0) {
+        setOriginalRecords(result.data); // Store original records with IDs
         const displayData = result.data.map(convertToDisplayData);
         setExtractedData(displayData);
         
@@ -123,6 +140,7 @@ const DataExtraction = () => {
           description: `Loaded ${result.data.length} sensor readings from database`,
         });
       } else {
+        setOriginalRecords([]);
         setExtractedData([]);
         toast({
           title: "No Data",
@@ -328,9 +346,25 @@ const DataExtraction = () => {
     }
   };
 
-  const handleRegisterAsIP = (data: SensorData, location: string) => {
-    setSelectedSensorForIP({ data, location });
+  const handleRegisterAsIP = (data: SensorDataWithId, location: string) => {
+    // Only allow if not already registered
+    if (data.isRegistered) return;
+    
+    // Pass the data with its database ID
+    setSelectedSensorForIP({ 
+      data, 
+      location 
+    });
     setIpDialogOpen(true);
+  };
+
+  const handleRegistrationComplete = () => {
+    // Refresh data after successful registration
+    loadFromDatabase();
+    toast({
+      title: "Refreshing Data",
+      description: "Updating sensor data list...",
+    });
   };
 
   return (
@@ -467,15 +501,37 @@ const DataExtraction = () => {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between flex-wrap gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          data.isRegistered 
+                            ? 'bg-gradient-to-br from-green-500 to-emerald-500' 
+                            : 'bg-gradient-to-br from-primary to-secondary'
+                        }`}>
                           <div className="text-white">
                             {data.icon}
                           </div>
                         </div>
                         <div>
-                          <CardTitle className="text-lg">{data.title}</CardTitle>
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            {data.title}
+                            {data.isRegistered && (
+                              <Badge className="bg-green-500/20 text-green-600 border-green-500/30 text-xs">
+                                <CheckCircle className="h-2.5 w-2.5 mr-1" />
+                                IP Registered
+                              </Badge>
+                            )}
+                          </CardTitle>
                           <CardDescription className="text-xs mt-1">
                             {data.timestamp}
+                            {data.id && (
+                              <span className="ml-2 text-muted-foreground">
+                                ID: {data.id}
+                              </span>
+                            )}
+                            {data.isRegistered && data.registered_at && (
+                              <span className="ml-2 text-green-600">
+                                • Registered: {new Date(data.registered_at).toLocaleDateString()}
+                              </span>
+                            )}
                           </CardDescription>
                         </div>
                       </div>
@@ -489,6 +545,11 @@ const DataExtraction = () => {
                         <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-xs">
                           Sensor: {data.sensorHealth}
                         </Badge>
+                        {data.ip_asset_id && (
+                          <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/20 text-xs">
+                            IP: {data.ip_asset_id.slice(0, 6)}...
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </CardHeader>
@@ -563,19 +624,49 @@ const DataExtraction = () => {
                       </div>
                     </div>
                     <div className="flex gap-1 pt-3 border-t border-border">
-                      <Button 
-                        size="sm" 
-                        className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8"
-                        onClick={() => handleRegisterAsIP(data, location)}
-                      >
-                        Register as IP
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-primary/50 text-xs h-8">
-                        View History
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-secondary/50 text-xs h-8">
-                        Export Data
-                      </Button>
+                      {data.isRegistered ? (
+                        <>
+                          {/* Show disabled "Registered" button for registered data */}
+                          <Button 
+                            size="sm" 
+                            disabled
+                            className="bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:opacity-90 text-xs h-8 flex items-center gap-1"
+                          >
+                            <CheckCircle className="h-3 w-3" />
+                            Registered as IP
+                          </Button>
+                          
+                          {/* Show "View IP" button that links to Story Explorer */}
+                          {data.story_explorer_url && (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="border-purple-500/50 text-purple-600 text-xs h-8 flex items-center gap-1"
+                              onClick={() => window.open(data.story_explorer_url, '_blank')}
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              View IP
+                            </Button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {/* Show "Register as IP" button for unregistered data */}
+                          <Button 
+                            size="sm" 
+                            className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8"
+                            onClick={() => handleRegisterAsIP(data, location)}
+                          >
+                            Register as IP
+                          </Button>
+                          <Button size="sm" variant="outline" className="border-primary/50 text-xs h-8">
+                            View History
+                          </Button>
+                          <Button size="sm" variant="outline" className="border-secondary/50 text-xs h-8">
+                            Export Data
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -593,6 +684,9 @@ const DataExtraction = () => {
         onOpenChange={setIpDialogOpen}
         sensorData={selectedSensorForIP?.data || null}
         location={selectedSensorForIP?.location || ''}
+        sensorDataId={selectedSensorForIP?.data?.id} // Pass the database ID
+        supabaseService={supabaseService} // Pass the service
+        onRegistrationComplete={handleRegistrationComplete}
       />
     </div>
   );
