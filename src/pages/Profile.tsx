@@ -1,68 +1,196 @@
+import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Thermometer, Sun, Droplets, Sprout, CloudRain, TrendingUp, Shield } from "lucide-react";
+import { Thermometer, Sun, Droplets, Sprout, CloudRain, TrendingUp, Shield, Loader2, ExternalLink, AlertCircle,MapPin } from "lucide-react";
+import { useAccount } from "wagmi";
+import { useToast } from "@/hooks/use-toast";
+import { createSupabaseService } from "@/services/supabaseService";
+import type { SensorDataRecord } from "@/services/supabaseService";
+import { CheckCircle } from "lucide-react";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+interface RegisteredDataset {
+  id: number;
+  ip_asset_id: string;
+  type: string;
+  title: string;
+  registrationDate: string;
+  status: string;
+  creator_address: string;
+  story_explorer_url?: string;
+  icon: React.ReactNode;
+  gradient: string;
+  location?: string;
+  timestamp: string;
+  sensor_health: string;
+}
+
+const getIconForType = (type: string): React.ReactNode => {
+  switch (type.toLowerCase()) {
+    case 'temperature':
+    case 'temp':
+      return <Thermometer className="h-5 w-5" />;
+    case 'sunlight':
+    case 'sun':
+      return <Sun className="h-5 w-5" />;
+    case 'moisture':
+    case 'soil':
+      return <Droplets className="h-5 w-5" />;
+    case 'growth':
+    case 'crop':
+      return <Sprout className="h-5 w-5" />;
+    case 'rainfall':
+    case 'rain':
+      return <CloudRain className="h-5 w-5" />;
+    default:
+      return <AlertCircle className="h-5 w-5" />;
+  }
+};
+
+const getGradientForType = (type: string): string => {
+  switch (type.toLowerCase()) {
+    case 'temperature':
+    case 'temp':
+      return "from-orange-500 to-red-500";
+    case 'sunlight':
+    case 'sun':
+      return "from-yellow-500 to-orange-500";
+    case 'moisture':
+    case 'soil':
+      return "from-blue-500 to-cyan-500";
+    case 'growth':
+    case 'crop':
+      return "from-green-500 to-emerald-500";
+    case 'rainfall':
+    case 'rain':
+      return "from-indigo-500 to-blue-500";
+    default:
+      return "from-primary to-secondary";
+  }
+};
 
 const Profile = () => {
-  const registeredData = [
-    {
-      id: "IP-2024-001",
-      type: "Temperature & Humidity Dataset",
-      icon: <Thermometer className="h-5 w-5" />,
-      registrationDate: "2024-01-10",
-      status: "Active",
-      earnings: "2.4 ETH",
-      subscribers: 12,
-      gradient: "from-orange-500 to-red-500"
-    },
-    {
-      id: "IP-2024-002",
-      type: "Sunlight Intensity Dataset",
-      icon: <Sun className="h-5 w-5" />,
-      registrationDate: "2024-01-12",
-      status: "Active",
-      earnings: "1.8 ETH",
-      subscribers: 8,
-      gradient: "from-yellow-500 to-orange-500"
-    },
-    {
-      id: "IP-2024-003",
-      type: "Soil Moisture Dataset",
-      icon: <Droplets className="h-5 w-5" />,
-      registrationDate: "2024-01-14",
-      status: "Active",
-      earnings: "2.1 ETH",
-      subscribers: 10,
-      gradient: "from-blue-500 to-cyan-500"
-    },
-    {
-      id: "IP-2024-004",
-      type: "Crop Growth Dataset",
-      icon: <Sprout className="h-5 w-5" />,
-      registrationDate: "2024-01-15",
-      status: "Active",
-      earnings: "3.2 ETH",
-      subscribers: 15,
-      gradient: "from-green-500 to-emerald-500"
-    },
-    {
-      id: "IP-2024-005",
-      type: "Rainfall Dataset",
-      icon: <CloudRain className="h-5 w-5" />,
-      registrationDate: "2024-01-16",
-      status: "Active",
-      earnings: "1.5 ETH",
-      subscribers: 7,
-      gradient: "from-indigo-500 to-blue-500"
+  const { address, isConnected } = useAccount();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [registeredData, setRegisteredData] = useState<RegisteredDataset[]>([]);
+  const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
+
+  useEffect(() => {
+    if (isConnected && address) {
+      fetchRegisteredData();
+    } else {
+      setLoading(false);
     }
-  ];
+  }, [address, isConnected]);
 
-  const totalEarnings = registeredData.reduce((sum, item) => {
-    return sum + parseFloat(item.earnings.replace(" ETH", ""));
-  }, 0);
+  const fetchRegisteredData = async () => {
+    setLoading(true);
+    try {
+      // Fetch only data registered through the connected wallet address
+      const result = await supabaseService.fetchSensorData({
+        has_ip_registration: true // Only get registered data
+      });
 
-  const totalSubscribers = registeredData.reduce((sum, item) => sum + item.subscribers, 0);
+      if (result.success && result.data) {
+        // Filter by creator_address (current wallet address)
+        const myRegisteredData = result.data.filter(
+          record => record.creator_address?.toLowerCase() === address?.toLowerCase()
+        );
+
+        // Transform data to match the profile format
+        const transformedData: RegisteredDataset[] = myRegisteredData.map(record => ({
+          id: record.id!,
+          ip_asset_id: record.ip_asset_id!,
+          type: record.type,
+          title: record.title,
+          registrationDate: record.registered_at 
+            ? new Date(record.registered_at).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+              })
+            : 'Unknown',
+          status: 'Active',
+          creator_address: record.creator_address!,
+          story_explorer_url: record.story_explorer_url,
+          icon: getIconForType(record.type),
+          gradient: getGradientForType(record.type),
+          location: record.location || undefined,
+          timestamp: record.timestamp,
+          sensor_health: record.sensor_health
+        }));
+
+        setRegisteredData(transformedData);
+        
+        toast({
+          title: "Data Loaded",
+          description: `Found ${transformedData.length} registered datasets`,
+        });
+      } else {
+        setRegisteredData([]);
+      }
+    } catch (error: any) {
+      console.error('Error fetching registered data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load registered data",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalEarnings = registeredData.length * 0; // Placeholder - you might want to fetch actual earnings from blockchain
+  const totalSubscribers = registeredData.length * 0; // Placeholder - fetch actual subscribers if available
+
+  if (!isConnected) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container mx-auto px-4 py-24">
+          <div className="max-w-4xl mx-auto text-center">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
+              <AlertCircle className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+              Wallet Not Connected
+            </h1>
+            <p className="text-xl text-muted-foreground mb-8">
+              Please connect your wallet to view your registered IP assets
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Your registered datasets will appear here once you connect your wallet
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container mx-auto px-4 py-24">
+          <div className="max-w-4xl mx-auto text-center">
+            <Loader2 className="h-12 w-12 animate-spin mx-auto mb-6 text-primary" />
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+              Loading Your Data
+            </h1>
+            <p className="text-xl text-muted-foreground">
+              Fetching your registered IP assets...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,11 +204,12 @@ const Profile = () => {
               Your Profile
             </Badge>
             <h1 className="text-5xl md:text-6xl font-bold mb-4">
-              Your <span className="gradient-text">Registered Data</span>
+              Your <span className="gradient-text">Registered IP</span>
             </h1>
             <p className="text-xl text-muted-foreground">
-              Track your IP-protected datasets and earnings
+              Track your IP-protected datasets registered through your wallet
             </p>
+           
           </div>
 
           {/* Stats Overview */}
@@ -93,7 +222,8 @@ const Profile = () => {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Earnings</p>
-                    <p className="text-3xl font-bold gradient-text">{totalEarnings.toFixed(1)} ETH</p>
+                    <p className="text-3xl font-bold gradient-text">{totalEarnings.toFixed(1)} IP</p>
+                    <p className="text-xs text-muted-foreground mt-1">(Placeholder - Real earnings coming soon)</p>
                   </div>
                 </div>
               </CardContent>
@@ -122,6 +252,7 @@ const Profile = () => {
                   <div>
                     <p className="text-sm text-muted-foreground">Total Subscribers</p>
                     <p className="text-3xl font-bold">{totalSubscribers}</p>
+                    <p className="text-xs text-muted-foreground mt-1">(Placeholder - Real subscribers coming soon)</p>
                   </div>
                 </div>
               </CardContent>
@@ -134,66 +265,106 @@ const Profile = () => {
               IP-Protected <span className="gradient-text">Datasets</span>
             </h2>
             
-            {registeredData.map((item, index) => (
-              <Card 
-                key={item.id}
-                className="glass-card hover-lift animate-slide-in-right"
-                style={{animationDelay: `${index * 0.1}s`}}
-              >
-                <div className={`h-1 bg-gradient-to-r ${item.gradient}`}></div>
-                <CardHeader>
-                  <div className="flex items-start justify-between flex-wrap gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-14 h-14 bg-gradient-to-br ${item.gradient} rounded-xl flex items-center justify-center`}>
-                        <div className="text-white">
-                          {item.icon}
+            {registeredData.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
+                  <AlertCircle className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">No Registered Datasets Found</h3>
+                <p className="text-muted-foreground mb-6">
+                  You haven't registered any IP assets yet. Go to the Extract Data page to register your sensor data.
+                </p>
+                <Button 
+                  onClick={() => window.location.href = '/extract'}
+                  className="bg-gradient-to-r from-primary to-secondary"
+                >
+                  Go to Extract Data
+                </Button>
+              </div>
+            ) : (
+              registeredData.map((item, index) => (
+                <Card 
+                  key={item.id}
+                  className="glass-card hover-lift animate-slide-in-right"
+                  style={{animationDelay: `${index * 0.1}s`}}
+                >
+                  <div className={`h-1 bg-gradient-to-r ${item.gradient}`}></div>
+                  <CardHeader>
+                    <div className="flex items-start justify-between flex-wrap gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-14 h-14 bg-gradient-to-br ${item.gradient} rounded-xl flex items-center justify-center`}>
+                          <div className="text-white">
+                            {item.icon}
+                          </div>
+                        </div>
+                        <div>
+                          <CardTitle className="text-xl">{item.title}</CardTitle>
+                          <CardDescription className="mt-1">
+                            IP Asset ID: <span className="font-mono font-semibold">{item.ip_asset_id.slice(0, 12)}...</span>
+                            {item.location && (
+                              <span className="ml-3 text-blue-500">
+                                <MapPin className="inline h-3 w-3 mr-1" />
+                                {item.location}
+                              </span>
+                            )}
+                          </CardDescription>
                         </div>
                       </div>
+                      <Badge className="bg-green-500/20 text-green-600 border-green-500/30">
+                        <CheckCircle className="h-2.5 w-2.5 mr-1" />
+                        {item.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                       <div>
-                        <CardTitle className="text-xl">{item.type}</CardTitle>
-                        <CardDescription className="mt-1">
-                          IP Registration: <span className="font-mono font-semibold">{item.id}</span>
-                        </CardDescription>
+                        <p className="text-sm text-muted-foreground">Registration Date</p>
+                        <p className="font-semibold">{item.registrationDate}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Sensor Type</p>
+                        <p className="font-semibold capitalize">{item.type}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Health Status</p>
+                        <p className="font-semibold">{item.sensor_health}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <p className="font-semibold text-green-500">Active</p>
                       </div>
                     </div>
-                    <Badge className="bg-primary/10 text-primary border-primary/20">
-                      {item.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Registration Date</p>
-                      <p className="font-semibold">{item.registrationDate}</p>
+                    <div className="flex gap-2 pt-4 border-t border-border">
+                      <Button 
+                        size="sm" 
+                        className="bg-gradient-to-r from-primary to-secondary hover:opacity-90"
+                      >
+                        View Analytics
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-primary/50"
+                      >
+                        Manage Access
+                      </Button>
+                      {item.story_explorer_url && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="border-purple-500/50 text-purple-600"
+                          onClick={() => window.open(item.story_explorer_url, '_blank')}
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          View IP
+                        </Button>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Subscribers</p>
-                      <p className="font-semibold">{item.subscribers}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Earnings</p>
-                      <p className="font-semibold text-primary">{item.earnings}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Status</p>
-                      <p className="font-semibold text-green-500">Active</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-4 border-t border-border">
-                    <Button size="sm" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90">
-                      View Analytics
-                    </Button>
-                    <Button size="sm" variant="outline" className="border-primary/50">
-                      Manage Access
-                    </Button>
-                    <Button size="sm" variant="outline" className="border-primary/50">
-                      IP Certificate
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
         </div>
       </div>
