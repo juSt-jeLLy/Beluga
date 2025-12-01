@@ -13,6 +13,20 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      'path': 'path-browserify',
+    },
+  },
+  define: {
+    'process.env': '{}',
+    'process.platform': '"browser"',
+    'process.version': '"v16.0.0"',
+    global: 'globalThis',
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      define: {
+        global: 'globalThis'
+      },
     },
   },
 }));

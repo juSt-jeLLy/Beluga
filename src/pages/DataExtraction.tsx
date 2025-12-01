@@ -11,16 +11,16 @@ import type { SensorData } from "@/services/gmailService";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { SensorDataRecord } from "@/services/supabaseService";
 import { createBlynkService } from "@/services/blynkService";
+import IPRegistrationDialog from "@/components/IPRegistrationDialog";
 
 const GMAIL_API_KEY = import.meta.env.VITE_GMAIL_API_KEY;
-const GMAIL_CLIENT_ID = import.meta.env.VITE_GMAIL_CLIENT_ID ;
+const GMAIL_CLIENT_ID = import.meta.env.VITE_GMAIL_CLIENT_ID;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const BLYNK_API_URL = import.meta.env.VITE_BLYNK_API_URL;
 const BLYNK_SERVER = import.meta.env.VITE_BLYNK_SERVER;
 const BLYNK_ACCESS_TOKEN = import.meta.env.VITE_BLYNK_ACCESS_TOKEN;
 const BLYNK_TEMPLATE_ID = parseInt(import.meta.env.VITE_BLYNK_TEMPLATE_ID);
-
 
 const getIconForType = (type: string): React.ReactNode => {
   switch (type) {
@@ -75,6 +75,11 @@ const DataExtraction = () => {
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [savingToDb, setSavingToDb] = useState(false);
   const [loadingFromDb, setLoadingFromDb] = useState(false);
+  const [selectedSensorForIP, setSelectedSensorForIP] = useState<{
+    data: SensorData;
+    location: string;
+  } | null>(null);
+  const [ipDialogOpen, setIpDialogOpen] = useState(false);
 
   useEffect(() => {
     const loadScripts = async () => {
@@ -323,6 +328,11 @@ const DataExtraction = () => {
     }
   };
 
+  const handleRegisterAsIP = (data: SensorData, location: string) => {
+    setSelectedSensorForIP({ data, location });
+    setIpDialogOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -443,13 +453,9 @@ const DataExtraction = () => {
 
           {extractedData.length > 0 && !loadingFromDb && (
             <div className="space-y-4 max-w-5xl mx-auto">
-              
-              
               {extractedData.map((data, index) => {
                 const locationMatch = data.data.match(/^([^,]+),/);
                 const location = locationMatch ? locationMatch[1].trim() : data.location || '';
-                
-                // Remove location prefix from data display
                 const cleanData = locationMatch ? data.data.substring(locationMatch[0].length).trim() : data.data;
                 
                 return (
@@ -489,7 +495,6 @@ const DataExtraction = () => {
                   <CardContent className="space-y-3">
                     <div className="bg-muted/30 p-4 rounded border border-border">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Left Column */}
                         <div className="space-y-3">
                           {(() => {
                             const items = cleanData.split(',');
@@ -523,7 +528,6 @@ const DataExtraction = () => {
                           })()}
                         </div>
                         
-                        {/* Right Column */}
                         <div className="space-y-3">
                           {(() => {
                             const items = cleanData.split(',');
@@ -559,7 +563,11 @@ const DataExtraction = () => {
                       </div>
                     </div>
                     <div className="flex gap-1 pt-3 border-t border-border">
-                      <Button size="sm" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8">
+                      <Button 
+                        size="sm" 
+                        className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8"
+                        onClick={() => handleRegisterAsIP(data, location)}
+                      >
                         Register as IP
                       </Button>
                       <Button size="sm" variant="outline" className="border-primary/50 text-xs h-8">
@@ -579,6 +587,13 @@ const DataExtraction = () => {
         <div className="absolute top-1/4 right-10 w-64 h-64 bg-primary/10 rounded-full blur-3xl animate-float"></div>
         <div className="absolute bottom-1/4 left-10 w-72 h-72 bg-secondary/10 rounded-full blur-3xl animate-float" style={{animationDelay: '2s'}}></div>
       </div>
+      
+      <IPRegistrationDialog
+        open={ipDialogOpen}
+        onOpenChange={setIpDialogOpen}
+        sensorData={selectedSensorForIP?.data || null}
+        location={selectedSensorForIP?.location || ''}
+      />
     </div>
   );
 };
