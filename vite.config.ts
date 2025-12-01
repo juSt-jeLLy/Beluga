@@ -18,9 +18,7 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     'process.env': '{}',
-    'process.cwd': 'function(){return"/"}',
-    'process.platform': '"browser"',
-    'process.version': '"v16.0.0"',
+    'process.env.NODE_ENV': JSON.stringify(mode),
     global: 'globalThis',
   },
   optimizeDeps: {
@@ -28,6 +26,11 @@ export default defineConfig(({ mode }) => ({
       define: {
         global: 'globalThis'
       },
+    },
+  },
+  build: {
+    commonjsOptions: {
+      transformMixedEsModules: true,
     },
   },
 }));
