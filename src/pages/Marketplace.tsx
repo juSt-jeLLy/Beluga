@@ -1,73 +1,231 @@
+import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Thermometer, Sun, Droplets, Sprout, CloudRain, TrendingUp } from "lucide-react";
+import { 
+  Thermometer, 
+  Sun, 
+  Droplets, 
+  Sprout, 
+  CloudRain, 
+  TrendingUp, 
+  MapPin, 
+  Calendar, 
+  Clock,
+  Loader2,
+  AlertCircle,
+  ExternalLink
+} from "lucide-react";
 import marketplaceBg from "@/assets/marketplace-bg.jpg";
+import { createSupabaseService } from "@/services/supabaseService";
+import { useToast } from "@/hooks/use-toast";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+interface MarketplaceDataset {
+  id: number;
+  ip_asset_id: string;
+  type: string;
+  title: string;
+  description: string;
+  location?: string;
+  timestamp: string;
+  registered_at: string;
+  creator_address: string;
+  story_explorer_url?: string;
+  icon: React.ReactNode;
+  gradient: string;
+  sensor_health: string;
+  data: string;
+}
+
+const getIconForType = (type: string): React.ReactNode => {
+  switch (type.toLowerCase()) {
+    case 'temperature':
+    case 'temp':
+      return <Thermometer className="h-6 w-6" />;
+    case 'sunlight':
+    case 'sun':
+      return <Sun className="h-6 w-6" />;
+    case 'moisture':
+    case 'soil':
+      return <Droplets className="h-6 w-6" />;
+    case 'growth':
+    case 'crop':
+      return <Sprout className="h-6 w-6" />;
+    case 'rainfall':
+    case 'rain':
+      return <CloudRain className="h-6 w-6" />;
+    default:
+      return <TrendingUp className="h-6 w-6" />;
+  }
+};
+
+const getGradientForType = (type: string): string => {
+  switch (type.toLowerCase()) {
+    case 'temperature':
+    case 'temp':
+      return "from-orange-500 to-red-500";
+    case 'sunlight':
+    case 'sun':
+      return "from-yellow-500 to-orange-500";
+    case 'moisture':
+    case 'soil':
+      return "from-blue-500 to-cyan-500";
+    case 'growth':
+    case 'crop':
+      return "from-green-500 to-emerald-500";
+    case 'rainfall':
+    case 'rain':
+      return "from-indigo-500 to-blue-500";
+    default:
+      return "from-purple-500 to-pink-500";
+  }
+};
+
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+const formatTime = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatDateTime = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
 
 const Marketplace = () => {
-  const mockData = [
-    {
-      id: 1,
-      type: "Temperature & Humidity",
-      icon: <Thermometer className="h-6 w-6" />,
-      description: "Real-time temperature and humidity monitoring with heat index and dew point calculations",
-      price: "0.5 ETH/month",
-      dataPoints: "24/7 monitoring",
-      accuracy: "±0.5°C",
-      gradient: "from-orange-500 to-red-500"
-    },
-    {
-      id: 2,
-      type: "Sunlight Intensity",
-      icon: <Sun className="h-6 w-6" />,
-      description: "Peak hours tracking, lux readings, and shade pattern detection using BH1750 sensor",
-      price: "0.3 ETH/month",
-      dataPoints: "Hourly readings",
-      accuracy: "±20 lux",
-      gradient: "from-yellow-500 to-orange-500"
-    },
-    {
-      id: 3,
-      type: "Soil Moisture",
-      icon: <Droplets className="h-6 w-6" />,
-      description: "Multi-depth moisture tracking optimized for various crop types with rain correlation",
-      price: "0.4 ETH/month",
-      dataPoints: "4x daily updates",
-      accuracy: "±2%",
-      gradient: "from-blue-500 to-cyan-500"
-    },
-    {
-      id: 4,
-      type: "Live Crop Growth",
-      icon: <Sprout className="h-6 w-6" />,
-      description: "Height tracking, growth rate analysis, leaf count, and environmental correlation data",
-      price: "0.6 ETH/month",
-      dataPoints: "Daily measurements",
-      accuracy: "±0.5cm",
-      gradient: "from-green-500 to-emerald-500"
-    },
-    {
-      id: 5,
-      type: "Rainfall Data",
-      icon: <CloudRain className="h-6 w-6" />,
-      description: "Precipitation tracking with duration, intensity patterns via Arduino rain gauge",
-      price: "0.35 ETH/month",
-      dataPoints: "Real-time alerts",
-      accuracy: "±0.1 inches",
-      gradient: "from-indigo-500 to-blue-500"
-    },
-    {
-      id: 6,
-      type: "Complete Package",
-      icon: <TrendingUp className="h-6 w-6" />,
-      description: "All sensor data combined with analytics dashboard and historical insights",
-      price: "1.8 ETH/month",
-      dataPoints: "Full access",
-      accuracy: "Premium",
-      gradient: "from-purple-500 to-pink-500"
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [datasets, setDatasets] = useState<MarketplaceDataset[]>([]);
+  const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
+
+  useEffect(() => {
+    fetchRegisteredDatasets();
+  }, []);
+
+  const fetchRegisteredDatasets = async () => {
+    setLoading(true);
+    try {
+      // Fetch all registered IP datasets
+      const result = await supabaseService.fetchSensorData({
+        has_ip_registration: true // Only get registered data
+      });
+
+      if (result.success && result.data && result.data.length > 0) {
+        // Transform data to marketplace format
+        const transformedData: MarketplaceDataset[] = result.data.map(record => {
+          // Create a description from the data
+          const dataPreview = record.data.length > 100 
+            ? record.data.substring(0, 100) + '...' 
+            : record.data;
+          
+          return {
+            id: record.id!,
+            ip_asset_id: record.ip_asset_id!,
+            type: record.type,
+            title: record.title,
+            description: `${record.type} data from ${record.location || 'unknown location'}. ${dataPreview}`,
+            location: record.location,
+            timestamp: record.timestamp,
+            registered_at: record.registered_at || record.created_at || record.timestamp,
+            creator_address: record.creator_address!,
+            story_explorer_url: record.story_explorer_url,
+            icon: getIconForType(record.type),
+            gradient: getGradientForType(record.type),
+            sensor_health: record.sensor_health,
+            data: record.data
+          };
+        });
+
+        setDatasets(transformedData);
+        
+        toast({
+          title: "Marketplace Updated",
+          description: `Found ${transformedData.length} registered datasets available for subscription`,
+        });
+      } else {
+        setDatasets([]);
+      }
+    } catch (error: any) {
+      console.error('Error fetching marketplace data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load marketplace data",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  const handleSubscribe = (dataset: MarketplaceDataset) => {
+    toast({
+      title: "Subscription Requested",
+      description: `Request sent for ${dataset.title} from ${dataset.location || 'unknown location'}`,
+    });
+    // Here you would implement the actual subscription logic
+  };
+
+  const handleViewDetails = (dataset: MarketplaceDataset) => {
+    // Show more details about the dataset
+    toast({
+      title: dataset.title,
+      description: `Location: ${dataset.location || 'Unknown'}\nRecorded: ${formatDateTime(dataset.timestamp)}`,
+    });
+  };
+
+  const handleViewIP = (url: string) => {
+    window.open(url, '_blank');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="relative pt-24 pb-12 overflow-hidden">
+          <div className="absolute inset-0 z-0">
+            <img 
+              src={marketplaceBg} 
+              alt="Data Marketplace" 
+              className="w-full h-full object-cover opacity-20"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background to-background"></div>
+          </div>
+          <div className="container mx-auto px-4 relative z-10">
+            <div className="text-center py-24">
+              <Loader2 className="h-12 w-12 animate-spin mx-auto mb-6 text-primary" />
+              <h1 className="text-4xl md:text-5xl font-bold mb-4">
+                Loading <span className="gradient-text">Marketplace</span>
+              </h1>
+              <p className="text-xl text-muted-foreground">
+                Fetching registered datasets...
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -95,55 +253,172 @@ const Marketplace = () => {
               Subscribe to verified agricultural sensor data from farms worldwide. 
               All data is IP-protected on blockchain.
             </p>
+            <div className="mt-6 flex items-center justify-center gap-4">
+              <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/30">
+                {datasets.length} Datasets Available
+              </Badge>
+              <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/30">
+                IP Protected
+              </Badge>
+              <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30">
+                Real-time Data
+              </Badge>
+            </div>
           </div>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-            {mockData.map((item, index) => (
-              <Card 
-                key={item.id}
-                className="glass-card hover-lift group animate-slide-in-left overflow-hidden"
-                style={{animationDelay: `${index * 0.1}s`}}
+
+          {datasets.length === 0 ? (
+            <div className="text-center py-24">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
+                <AlertCircle className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <h2 className="text-3xl font-bold mb-4">No Datasets Available</h2>
+              <p className="text-xl text-muted-foreground mb-6 max-w-2xl mx-auto">
+                There are no registered datasets in the marketplace yet. 
+                Be the first to register your sensor data as IP!
+              </p>
+              <Button 
+                onClick={() => window.location.href = '/extract'}
+                className="bg-gradient-to-r from-primary to-secondary"
               >
-                <div className={`h-2 bg-gradient-to-r ${item.gradient}`}></div>
-                <CardHeader>
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`w-14 h-14 bg-gradient-to-br ${item.gradient} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                      <div className="text-white">
-                        {item.icon}
+                Register Your Data
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Dataset Grid - 3 columns on large screens */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+                {datasets.map((dataset, index) => (
+                  <Card 
+                    key={dataset.id}
+                    className="glass-card hover-lift group animate-slide-in-left overflow-hidden"
+                    style={{animationDelay: `${index * 0.05}s`}}
+                  >
+                    <div className={`h-2 bg-gradient-to-r ${dataset.gradient}`}></div>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-14 h-14 bg-gradient-to-br ${dataset.gradient} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                          <div className="text-white">
+                            {dataset.icon}
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-primary font-bold text-xs">
+                          IP Protected
+                        </Badge>
                       </div>
-                    </div>
-                    <Badge variant="secondary" className="text-primary font-bold">
-                      {item.price}
-                    </Badge>
+                      
+                      <CardTitle className="text-xl group-hover:text-primary transition-colors mb-2">
+                        {dataset.title}
+                      </CardTitle>
+                      
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs">
+                          {dataset.type}
+                        </Badge>
+                        <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20 text-xs">
+                          {dataset.sensor_health}
+                        </Badge>
+                      </div>
+                      
+                      {/* Location and Timestamp Highlight */}
+                      <div className="space-y-2 mt-3">
+                        {dataset.location && (
+                          <div className="flex items-center gap-2 text-sm bg-blue-500/5 p-2 rounded border border-blue-500/20">
+                            <MapPin className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                            <span className="font-semibold text-blue-600">Location:</span>
+                            <span className="text-foreground font-medium">{dataset.location}</span>
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center gap-2 text-sm bg-amber-500/5 p-2 rounded border border-amber-500/20">
+                          <Calendar className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                          <span className="font-semibold text-amber-600">Recorded:</span>
+                          <span className="text-foreground font-medium">{formatDate(dataset.timestamp)}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 text-sm bg-purple-500/5 p-2 rounded border border-purple-500/20">
+                          <Clock className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                          <span className="font-semibold text-purple-600">Time:</span>
+                          <span className="text-foreground font-medium">{formatTime(dataset.timestamp)}</span>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    
+                    <CardContent className="space-y-4">
+                      <div className="text-sm text-muted-foreground line-clamp-2">
+                        {dataset.description}
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">IP ID:</span>
+                          <span className="font-mono text-primary">
+                            {dataset.ip_asset_id.slice(0, 8)}...
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">Registered:</span>
+                          <span className="font-semibold">{formatDate(dataset.registered_at)}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2 pt-2">
+                        <Button 
+                          className="flex-1 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-sm h-9"
+                          onClick={() => handleSubscribe(dataset)}
+                        >
+                          Subscribe
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          className="border-primary/50 text-sm h-9"
+                          onClick={() => handleViewDetails(dataset)}
+                        >
+                          Details
+                        </Button>
+                        {dataset.story_explorer_url && (
+                          <Button 
+                            variant="outline" 
+                            className="border-purple-500/50 text-purple-600 text-sm h-9"
+                            onClick={() => handleViewIP(dataset.story_explorer_url!)}
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              
+              {/* Stats Footer */}
+              <div className="mt-12 pt-8 border-t border-border">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-4xl mx-auto text-center">
+                  <div>
+                    <p className="text-3xl font-bold gradient-text">{datasets.length}</p>
+                    <p className="text-sm text-muted-foreground">Total Datasets</p>
                   </div>
-                  <CardTitle className="text-xl group-hover:text-primary transition-colors">
-                    {item.type}
-                  </CardTitle>
-                  <CardDescription className="text-base">
-                    {item.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Data Points:</span>
-                    <span className="font-semibold">{item.dataPoints}</span>
+                  <div>
+                    <p className="text-3xl font-bold gradient-text">
+                      {new Set(datasets.map(d => d.type)).size}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Sensor Types</p>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Accuracy:</span>
-                    <span className="font-semibold">{item.accuracy}</span>
+                  <div>
+                    <p className="text-3xl font-bold gradient-text">
+                      {new Set(datasets.filter(d => d.location).map(d => d.location)).size}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Locations</p>
                   </div>
-                  <div className="flex gap-2 pt-2">
-                    <Button className="flex-1 bg-gradient-to-r from-primary to-secondary hover:opacity-90">
-                      Subscribe
-                    </Button>
-                    <Button variant="outline" className="border-primary/50">
-                      Details
-                    </Button>
+                  <div>
+                    <p className="text-3xl font-bold gradient-text">
+                      {new Set(datasets.map(d => d.creator_address.slice(0, 10) + '...')).size}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Creators</p>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
         
         {/* Floating background elements */}

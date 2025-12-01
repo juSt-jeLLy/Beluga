@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Cloud, Thermometer, Sun, Droplets, Sprout, CloudRain, AlertCircle, Loader2, MapPin, Database, RefreshCw, CheckCircle, ExternalLink } from "lucide-react";
+import { Mail, Cloud, Thermometer, Sun, Droplets, Sprout, CloudRain, AlertCircle, Loader2, MapPin, Database, RefreshCw, CheckCircle, ExternalLink, Image } from "lucide-react";
 import dataPatternBg from "@/assets/data-pattern.jpg";
 import { createGmailService } from "@/services/gmailService";
 import type { SensorData } from "@/services/gmailService";
@@ -50,6 +50,17 @@ const getIconForType = (type: string): React.ReactNode => {
 };
 
 const convertToDisplayData = (record: SensorDataRecord): SensorDataWithId => {
+  // Try to get image hash from database first
+  let imageHash = record.image_hash;
+  
+  // If not in database, try to extract from data
+  if (!imageHash && record.data) {
+    const ipfsHashMatch = record.data.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})/);
+    if (ipfsHashMatch) {
+      imageHash = ipfsHashMatch[0];
+    }
+  }
+  
   return {
     id: record.id, // Store the database ID
     type: record.type,
@@ -70,7 +81,8 @@ const convertToDisplayData = (record: SensorDataRecord): SensorDataWithId => {
     isRegistered: !!record.ip_asset_id, // Check if IP registered
     ip_asset_id: record.ip_asset_id, // IP Asset ID
     story_explorer_url: record.story_explorer_url, // Story Explorer URL
-    registered_at: record.registered_at // Registration timestamp
+    registered_at: record.registered_at, // Registration timestamp
+    imageHash: imageHash // Make sure this is included
   };
 };
 
@@ -280,71 +292,105 @@ const DataExtraction = () => {
     }
   };
 
-  const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => {
-    setSavingToDb(true);
-    try {
-      const records = data.map(item => {
-        const locationMatch = item.data.match(/^([^,]+),/);
-        const location = locationMatch ? locationMatch[1].trim() : item.location || '';
-        const timestamp = new Date(item.timestamp).toISOString();
+const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => {
+  setSavingToDb(true);
+  try {
+    const records = data.map(item => {
+      const locationMatch = item.data.match(/^([^,]+),/);
+      const location = locationMatch ? locationMatch[1].trim() : item.location || '';
+      const timestamp = new Date(item.timestamp).toISOString();
 
-        return {
-          type: item.type,
-          title: item.title,
-          data: item.data,
-          location: location || null,
-          timestamp,
-          sensor_health: item.sensorHealth,
-          source
-        };
-      });
-
-      const uniqueRecords = [];
-      for (const record of records) {
-        const isDuplicate = await supabaseService.checkDuplicateExists(
-          record.timestamp,
-          record.type,
-          record.location || undefined
-        );
-        
-        if (!isDuplicate) {
-          uniqueRecords.push(record);
+      // Extract image hash from the data
+      let imageHash = item.imageHash; // First check if imageHash is already in the item
+      
+      // If not, try to extract it from the data
+      if (!imageHash) {
+        const ipfsHashMatch = item.data.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})/);
+        if (ipfsHashMatch) {
+          imageHash = ipfsHashMatch[0];
         }
       }
 
-      if (uniqueRecords.length === 0) {
-        toast({
-          title: "Already Saved",
-          description: "All sensor readings are already in the database",
-        });
-        return;
+      // Clean the data - remove duplicate image hash if present
+      let cleanData = item.data;
+      
+      // Remove "Image Hash: {hash}" pattern if it exists
+      if (cleanData.includes('Image Hash:')) {
+        // Split by newlines
+        const lines = cleanData.split('\n');
+        // Filter out lines that contain "Image Hash:"
+        const filteredLines = lines.filter(line => 
+          !line.toLowerCase().includes('image hash:')
+        );
+        cleanData = filteredLines.join('\n').trim();
+      }
+      
+      // Also remove any standalone IPFS hash at the end (without Image Hash label)
+      const lines = cleanData.split('\n');
+      const lastLine = lines[lines.length - 1]?.trim();
+      if (lastLine && /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})$/.test(lastLine)) {
+        lines.pop();
+        cleanData = lines.join('\n').trim();
       }
 
-      const result = await supabaseService.insertMultipleSensorData(uniqueRecords);
+      return {
+        type: item.type,
+        title: item.title,
+        data: cleanData, // Use cleaned data
+        location: location || null,
+        timestamp,
+        sensor_health: item.sensorHealth,
+        source,
+        image_hash: imageHash || null // Save the image hash to database
+      };
+    });
 
-      if (result.success) {
-        toast({
-          title: "Data Saved",
-          description: `Successfully saved ${result.count} new sensor readings to database`,
-        });
-      } else {
-        toast({
-          title: "Save Failed",
-          description: result.error || "Failed to save data to database",
-          variant: "destructive",
-        });
+    const uniqueRecords = [];
+    for (const record of records) {
+      const isDuplicate = await supabaseService.checkDuplicateExists(
+        record.timestamp,
+        record.type,
+        record.location || undefined
+      );
+      
+      if (!isDuplicate) {
+        uniqueRecords.push(record);
       }
-    } catch (error: any) {
-      console.error('Save to Supabase error:', error);
+    }
+
+    if (uniqueRecords.length === 0) {
       toast({
-        title: "Database Error",
-        description: "Failed to save data to database",
+        title: "Already Saved",
+        description: "All sensor readings are already in the database",
+      });
+      return;
+    }
+
+    const result = await supabaseService.insertMultipleSensorData(uniqueRecords);
+
+    if (result.success) {
+      toast({
+        title: "Data Saved",
+        description: `Successfully saved ${result.count} new sensor readings to database`,
+      });
+    } else {
+      toast({
+        title: "Save Failed",
+        description: result.error || "Failed to save data to database",
         variant: "destructive",
       });
-    } finally {
-      setSavingToDb(false);
     }
-  };
+  } catch (error: any) {
+    console.error('Save to Supabase error:', error);
+    toast({
+      title: "Database Error",
+      description: "Failed to save data to database",
+      variant: "destructive",
+    });
+  } finally {
+    setSavingToDb(false);
+  }
+};
 
   const handleRegisterAsIP = (data: SensorDataWithId, location: string) => {
     // Only allow if not already registered
@@ -492,6 +538,10 @@ const DataExtraction = () => {
                 const location = locationMatch ? locationMatch[1].trim() : data.location || '';
                 const cleanData = locationMatch ? data.data.substring(locationMatch[0].length).trim() : data.data;
                 
+                // Extract image hash from the data (if it exists in CSV format)
+                const ipfsHashMatch = data.data.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})/);
+                const imageHash = ipfsHashMatch ? ipfsHashMatch[0] : null;
+                
                 return (
                 <Card 
                   key={`${data.type}-${data.timestamp}-${index}`}
@@ -560,7 +610,14 @@ const DataExtraction = () => {
                           {(() => {
                             const items = cleanData.split(',');
                             const halfPoint = Math.ceil(items.length / 2);
-                            return items.slice(0, halfPoint).map((item, idx) => {
+                            
+                            // Filter out IPFS hashes from display
+                            const filteredItems = items.filter(item => {
+                              const trimmed = item.trim();
+                              return !/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})$/i.test(trimmed);
+                            });
+                            
+                            return filteredItems.slice(0, halfPoint).map((item, idx) => {
                               const trimmedItem = item.trim();
                               const isReading = /\d+[.,:]?\d*\s*(lx|°C|%|inches|cm|min|h|m)/.test(trimmedItem);
                               const isTimestamp = /\d{1,2}:\d{2}/.test(trimmedItem);
@@ -593,7 +650,14 @@ const DataExtraction = () => {
                           {(() => {
                             const items = cleanData.split(',');
                             const halfPoint = Math.ceil(items.length / 2);
-                            return items.slice(halfPoint).map((item, idx) => {
+                            
+                            // Filter out IPFS hashes from display
+                            const filteredItems = items.filter(item => {
+                              const trimmed = item.trim();
+                              return !/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})$/i.test(trimmed);
+                            });
+                            
+                            return filteredItems.slice(halfPoint).map((item, idx) => {
                               const trimmedItem = item.trim();
                               const isReading = /\d+[.,:]?\d*\s*(lx|°C|%|inches|cm|min|h|m)/.test(trimmedItem);
                               const isTimestamp = /\d{1,2}:\d{2}/.test(trimmedItem);
@@ -623,6 +687,18 @@ const DataExtraction = () => {
                         </div>
                       </div>
                     </div>
+                    
+                    {/* Show image hash separately if it exists */}
+                    {imageHash && (
+                      <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                          <Image className="h-3 w-3" />
+                          <span className="text-xs font-semibold">Image Hash:</span>
+                          <span className="text-xs font-mono truncate">{imageHash}</span>
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="flex gap-1 pt-3 border-t border-border">
                       {data.isRegistered ? (
                         <>
