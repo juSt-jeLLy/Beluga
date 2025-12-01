@@ -1,3 +1,4 @@
+// IPRegistrationDialog.tsx
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -8,12 +9,16 @@ import { useIPRegistration } from '@/utils/ipRegistrationService';
 import { SensorData } from '@/services/gmailService';
 import { Loader2, CheckCircle, XCircle, ExternalLink, Sparkles, Upload, FileCheck, Coins, Shield, Zap, Info } from 'lucide-react';
 import { networkInfo } from '@/utils/config';
+import { SupabaseService } from '@/utils/supabaseService';
 
 interface IPRegistrationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sensorData: SensorData | null;
   location: string;
+  sensorDataId?: number;
+  supabaseService?: SupabaseService;
+  onRegistrationComplete?: () => void; // Callback to refresh data
 }
 
 const ProcessingDialog = ({ 
@@ -166,7 +171,10 @@ export default function IPRegistrationDialog({
   open, 
   onOpenChange, 
   sensorData, 
-  location 
+  location,
+  sensorDataId,
+  supabaseService,
+  onRegistrationComplete
 }: IPRegistrationDialogProps) {
   const [creatorName, setCreatorName] = useState('');
   const [revenueShare, setRevenueShare] = useState('10');
@@ -177,11 +185,12 @@ export default function IPRegistrationDialog({
     success: boolean;
     ipId?: string;
     txHash?: string;
+    storyExplorerUrl?: string;
     error?: string;
   } | null>(null);
   
   const { toast } = useToast();
-  const { registerIP, isConnected } = useIPRegistration();
+  const { registerIP, isConnected } = useIPRegistration(supabaseService);
 
   const handleRegister = async () => {
     if (!sensorData) return;
@@ -224,6 +233,15 @@ export default function IPRegistrationDialog({
       return;
     }
 
+    if (!sensorDataId) {
+      toast({
+        title: 'Sensor Data ID Missing',
+        description: 'Cannot register IP without sensor data reference',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsRegistering(true);
     setRegistrationResult(null);
     setProcessingStep(0);
@@ -236,11 +254,13 @@ export default function IPRegistrationDialog({
         await new Promise(resolve => setTimeout(resolve, stepDelay));
       }
 
+      // Call registerIP with sensorDataId
       const result = await registerIP(
         sensorData,
         location,
         creatorName.trim(),
-        undefined
+        undefined,
+        sensorDataId
       );
 
       setRegistrationResult(result);
@@ -250,6 +270,11 @@ export default function IPRegistrationDialog({
           title: 'IP Registered Successfully! 🎉',
           description: `IP ID: ${result.ipId?.slice(0, 10)}...`,
         });
+        
+        // Call callback to refresh parent component data
+        if (onRegistrationComplete) {
+          onRegistrationComplete();
+        }
       } else {
         toast({
           title: 'Registration Failed',
@@ -329,6 +354,10 @@ export default function IPRegistrationDialog({
                       <div>
                         <div className="text-xs text-muted-foreground mb-1">Location</div>
                         <div className="font-semibold text-sm">{location}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Data ID</div>
+                        <div className="font-mono text-xs text-muted-foreground">#{sensorDataId}</div>
                       </div>
                     </div>
                   </div>
@@ -425,6 +454,10 @@ export default function IPRegistrationDialog({
                           <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
                           <span className="text-xs">Transferable License</span>
                         </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                          <span className="text-xs">Automated Database Tracking</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -435,7 +468,8 @@ export default function IPRegistrationDialog({
                   <div className="flex items-start gap-2">
                     <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                     <div className="text-xs text-muted-foreground">
-                      Your sensor data will be registered as an IP Asset on Story Protocol blockchain, enabling licensing and revenue sharing.
+                      Your sensor data will be registered as an IP Asset on Story Protocol blockchain. 
+                      Registration details will be automatically saved to your database.
                     </div>
                   </div>
                 </div>
@@ -452,7 +486,7 @@ export default function IPRegistrationDialog({
                     </Button>
                     <Button 
                       onClick={handleRegister}
-                      disabled={isRegistering || !isConnected}
+                      disabled={isRegistering || !isConnected || !sensorDataId}
                       className="flex-1 bg-gradient-to-r from-primary to-secondary hover:opacity-90 font-semibold shadow-lg h-11"
                     >
                       {isRegistering ? (
@@ -490,7 +524,7 @@ export default function IPRegistrationDialog({
                         Success! 🎉
                       </h3>
                       <p className="text-muted-foreground">
-                        Your sensor data is now registered on Story Protocol
+                        Your sensor data is now registered and saved to database
                       </p>
                     </div>
                   </>
@@ -533,22 +567,33 @@ export default function IPRegistrationDialog({
                       <div>
                         <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
                           <Zap className="h-3 w-3" />
-                          TRANSACTION HASH
+                          STORY EXPLORER URL
                         </div>
                         <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
-                          {registrationResult.txHash}
+                          {registrationResult.storyExplorerUrl}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
+                          <CheckCircle className="h-3 w-3" />
+                          DATABASE STATUS
+                        </div>
+                        <div className="text-sm p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-600">
+                          ✓ Registration details saved to database (ID: #{sensorDataId})
                         </div>
                       </div>
                       
-                      <a
-                        href={`${networkInfo.protocolExplorer}/ipa/${registrationResult.ipId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 p-4 rounded-xl bg-gradient-to-r from-primary to-secondary text-white hover:opacity-90 transition-opacity font-semibold shadow-lg"
-                      >
-                        <ExternalLink className="h-5 w-5" />
-                        View on Story Explorer
-                      </a>
+                      {registrationResult.storyExplorerUrl && (
+                        <a
+                          href={registrationResult.storyExplorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 p-4 rounded-xl bg-gradient-to-r from-primary to-secondary text-white hover:opacity-90 transition-opacity font-semibold shadow-lg"
+                        >
+                          <ExternalLink className="h-5 w-5" />
+                          View on Story Explorer
+                        </a>
+                      )}
                     </div>
                   ) : (
                     <div className="p-5 rounded-xl bg-red-500/10 border-2 border-red-500/30">
@@ -563,7 +608,7 @@ export default function IPRegistrationDialog({
                   onClick={handleClose}
                   className="w-full bg-gradient-to-r from-primary to-secondary hover:opacity-90 font-semibold shadow-lg h-12"
                 >
-                  Close
+                  {registrationResult.success ? 'View Dashboard' : 'Close'}
                 </Button>
               </div>
             </div>

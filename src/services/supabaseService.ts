@@ -13,6 +13,15 @@ export interface SensorDataRecord {
   sensor_health: string;
   source: 'gmail' | 'blynk';
   raw_email_id?: string;
+  
+  // New fields for IP registration
+  creator_address?: string;
+  ip_asset_id?: string;
+  story_explorer_url?: string;
+  registered_at?: string;
+  transaction_hash?: string;
+  license_terms_ids?: string[];
+  
   created_at?: string;
   updated_at?: string;
 }
@@ -75,6 +84,47 @@ export class SupabaseService {
   }
 
   /**
+   * Save IP registration data to sensor_data record
+   * This should be called AFTER successful IP registration
+   */
+  async saveIPRegistrationData(
+    sensorDataId: number,
+    ipRegistrationData: {
+      creator_address: string;
+      ip_asset_id: string;
+      story_explorer_url: string;
+      transaction_hash?: string;
+      license_terms_ids?: string[];
+    }
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await this.client
+        .from('sensor_data')
+        .update({
+          creator_address: ipRegistrationData.creator_address,
+          ip_asset_id: ipRegistrationData.ip_asset_id,
+          story_explorer_url: ipRegistrationData.story_explorer_url,
+          transaction_hash: ipRegistrationData.transaction_hash,
+          license_terms_ids: ipRegistrationData.license_terms_ids,
+          registered_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sensorDataId);
+
+      if (error) {
+        console.error('Supabase save IP registration error:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log(`IP registration data saved for sensor data ID: ${sensorDataId}`);
+      return { success: true };
+    } catch (error: any) {
+      console.error('Save IP registration error:', error);
+      return { success: false, error: error.message || 'Failed to save IP registration' };
+    }
+  }
+
+  /**
    * Check if a sensor reading already exists (to avoid duplicates)
    */
   async checkDuplicateExists(timestamp: string, type: string, location?: string): Promise<boolean> {
@@ -113,6 +163,7 @@ export class SupabaseService {
     startDate?: string;
     endDate?: string;
     limit?: number;
+    has_ip_registration?: boolean; // true = only registered, false = only unregistered
   }): Promise<{ success: boolean; data?: SensorDataRecord[]; error?: string }> {
     try {
       let query = this.client
@@ -138,6 +189,14 @@ export class SupabaseService {
 
       if (filters?.endDate) {
         query = query.lte('timestamp', filters.endDate);
+      }
+
+      if (filters?.has_ip_registration !== undefined) {
+        if (filters.has_ip_registration) {
+          query = query.not('ip_asset_id', 'is', null);
+        } else {
+          query = query.is('ip_asset_id', null);
+        }
       }
 
       if (filters?.limit) {
@@ -218,6 +277,65 @@ export class SupabaseService {
     } catch (error: any) {
       console.error('Get statistics error:', error);
       return { success: false, error: error.message || 'Failed to get statistics' };
+    }
+  }
+
+  /**
+   * Get IP registration statistics
+   */
+  async getIPRegistrationStats(): Promise<{ 
+    success: boolean; 
+    data?: {
+      total_registered: number;
+      total_unregistered: number;
+      recent_registrations: SensorDataRecord[];
+    }; 
+    error?: string 
+  }> {
+    try {
+      // Get total registered count
+      const { count: registeredCount, error: countError } = await this.client
+        .from('sensor_data')
+        .select('*', { count: 'exact', head: true })
+        .not('ip_asset_id', 'is', null);
+
+      if (countError) {
+        console.error('Count registered error:', countError);
+      }
+
+      // Get total unregistered count
+      const { count: unregisteredCount, error: unregError } = await this.client
+        .from('sensor_data')
+        .select('*', { count: 'exact', head: true })
+        .is('ip_asset_id', null);
+
+      if (unregError) {
+        console.error('Count unregistered error:', unregError);
+      }
+
+      // Get recent registrations
+      const { data: recentRegistrations, error: recentError } = await this.client
+        .from('sensor_data')
+        .select('*')
+        .not('ip_asset_id', 'is', null)
+        .order('registered_at', { ascending: false })
+        .limit(5);
+
+      if (recentError) {
+        console.error('Recent registrations error:', recentError);
+      }
+
+      return {
+        success: true,
+        data: {
+          total_registered: registeredCount || 0,
+          total_unregistered: unregisteredCount || 0,
+          recent_registrations: recentRegistrations || [],
+        }
+      };
+    } catch (error: any) {
+      console.error('Get IP registration stats error:', error);
+      return { success: false, error: error.message || 'Failed to get IP registration stats' };
     }
   }
 }

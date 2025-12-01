@@ -22,6 +22,12 @@ const BLYNK_SERVER = import.meta.env.VITE_BLYNK_SERVER;
 const BLYNK_ACCESS_TOKEN = import.meta.env.VITE_BLYNK_ACCESS_TOKEN;
 const BLYNK_TEMPLATE_ID = parseInt(import.meta.env.VITE_BLYNK_TEMPLATE_ID);
 
+// Define extended interface to include database ID
+interface SensorDataWithId extends SensorData {
+  id?: number; // Database ID
+  icon?: React.ReactNode;
+}
+
 const getIconForType = (type: string): React.ReactNode => {
   switch (type) {
     case 'temperature':
@@ -39,8 +45,9 @@ const getIconForType = (type: string): React.ReactNode => {
   }
 };
 
-const convertToDisplayData = (record: SensorDataRecord): SensorData => {
+const convertToDisplayData = (record: SensorDataRecord): SensorDataWithId => {
   return {
+    id: record.id, // Store the database ID
     type: record.type,
     title: record.title,
     data: record.data,
@@ -62,7 +69,7 @@ const convertToDisplayData = (record: SensorDataRecord): SensorData => {
 const DataExtraction = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [extractedData, setExtractedData] = useState<SensorData[]>([]);
+  const [extractedData, setExtractedData] = useState<SensorDataWithId[]>([]); // Use extended type
   const [selectedMethod, setSelectedMethod] = useState<"gmail" | "blynk">("gmail");
   const [gmailService] = useState(() => createGmailService(GMAIL_API_KEY, GMAIL_CLIENT_ID));
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
@@ -76,10 +83,11 @@ const DataExtraction = () => {
   const [savingToDb, setSavingToDb] = useState(false);
   const [loadingFromDb, setLoadingFromDb] = useState(false);
   const [selectedSensorForIP, setSelectedSensorForIP] = useState<{
-    data: SensorData;
+    data: SensorDataWithId;
     location: string;
   } | null>(null);
   const [ipDialogOpen, setIpDialogOpen] = useState(false);
+  const [originalRecords, setOriginalRecords] = useState<SensorDataRecord[]>([]); // Store original records with IDs
 
   useEffect(() => {
     const loadScripts = async () => {
@@ -115,6 +123,7 @@ const DataExtraction = () => {
       });
 
       if (result.success && result.data && result.data.length > 0) {
+        setOriginalRecords(result.data); // Store original records with IDs
         const displayData = result.data.map(convertToDisplayData);
         setExtractedData(displayData);
         
@@ -123,6 +132,7 @@ const DataExtraction = () => {
           description: `Loaded ${result.data.length} sensor readings from database`,
         });
       } else {
+        setOriginalRecords([]);
         setExtractedData([]);
         toast({
           title: "No Data",
@@ -328,9 +338,22 @@ const DataExtraction = () => {
     }
   };
 
-  const handleRegisterAsIP = (data: SensorData, location: string) => {
-    setSelectedSensorForIP({ data, location });
+  const handleRegisterAsIP = (data: SensorDataWithId, location: string) => {
+    // Pass the data with its database ID
+    setSelectedSensorForIP({ 
+      data, 
+      location 
+    });
     setIpDialogOpen(true);
+  };
+
+  const handleRegistrationComplete = () => {
+    // Refresh data after successful registration
+    loadFromDatabase();
+    toast({
+      title: "Refreshing Data",
+      description: "Updating sensor data list...",
+    });
   };
 
   return (
@@ -476,6 +499,11 @@ const DataExtraction = () => {
                           <CardTitle className="text-lg">{data.title}</CardTitle>
                           <CardDescription className="text-xs mt-1">
                             {data.timestamp}
+                            {data.id && (
+                              <span className="ml-2 text-muted-foreground">
+                                ID: {data.id}
+                              </span>
+                            )}
                           </CardDescription>
                         </div>
                       </div>
@@ -593,6 +621,9 @@ const DataExtraction = () => {
         onOpenChange={setIpDialogOpen}
         sensorData={selectedSensorForIP?.data || null}
         location={selectedSensorForIP?.location || ''}
+        sensorDataId={selectedSensorForIP?.data?.id} // Pass the database ID
+        supabaseService={supabaseService} // Pass the service
+        onRegistrationComplete={handleRegistrationComplete}
       />
     </div>
   );
