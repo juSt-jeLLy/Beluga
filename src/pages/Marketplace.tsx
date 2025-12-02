@@ -20,6 +20,7 @@ import {
 import marketplaceBg from "@/assets/marketplace-bg.jpg";
 import { createSupabaseService } from "@/services/supabaseService";
 import { useToast } from "@/hooks/use-toast";
+import { MintLicenseDialog } from "@/components/MintLicenseDialog";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -39,6 +40,9 @@ interface MarketplaceDataset {
   gradient: string;
   sensor_health: string;
   data: string;
+  license_terms_ids?: string[];
+  revenue_share?: number;
+  minting_fee?: number;
 }
 
 const getIconForType = (type: string): React.ReactNode => {
@@ -153,7 +157,10 @@ const Marketplace = () => {
             icon: getIconForType(record.type),
             gradient: getGradientForType(record.type),
             sensor_health: record.sensor_health,
-            data: record.data
+            data: record.data,
+            license_terms_ids: record.license_terms_ids,
+            revenue_share: record.revenue_share,
+            minting_fee: record.minting_fee,
           };
         });
 
@@ -161,7 +168,7 @@ const Marketplace = () => {
         
         toast({
           title: "Marketplace Updated",
-          description: `Found ${transformedData.length} registered datasets available for subscription`,
+          description: `Found ${transformedData.length} registered datasets available for licensing`,
         });
       } else {
         setDatasets([]);
@@ -176,14 +183,6 @@ const Marketplace = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSubscribe = (dataset: MarketplaceDataset) => {
-    toast({
-      title: "Subscription Requested",
-      description: `Request sent for ${dataset.title} from ${dataset.location || 'unknown location'}`,
-    });
-    // Here you would implement the actual subscription logic
   };
 
   const handleViewDetails = (dataset: MarketplaceDataset) => {
@@ -250,7 +249,7 @@ const Marketplace = () => {
               <span className="gradient-text">Data</span> Marketplace
             </h1>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Subscribe to verified agricultural sensor data from farms worldwide. 
+              Mint licenses for verified agricultural sensor data from farms worldwide. 
               All data is IP-protected on blockchain.
             </p>
             <div className="mt-6 flex items-center justify-center gap-4">
@@ -261,7 +260,7 @@ const Marketplace = () => {
                 IP Protected
               </Badge>
               <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30">
-                Real-time Data
+                Licensable
               </Badge>
             </div>
           </div>
@@ -361,13 +360,32 @@ const Marketplace = () => {
                         </div>
                       </div>
                       
+                      {/* License Terms Info */}
+                      {(dataset.revenue_share || dataset.minting_fee) && (
+                        <div className="flex gap-2 text-xs">
+                          {dataset.revenue_share && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                              {dataset.revenue_share}% Rev Share
+                            </Badge>
+                          )}
+                          {dataset.minting_fee && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                              {dataset.minting_fee} WIP
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                      
                       <div className="flex gap-2 pt-2">
-                        <Button 
-                          className="flex-1 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-sm h-9"
-                          onClick={() => handleSubscribe(dataset)}
-                        >
-                          Subscribe
-                        </Button>
+                        <MintLicenseDialog
+                          ipId={dataset.ip_asset_id}
+                          licenseTermsId={dataset.license_terms_ids?.map(id => BigInt(id))}
+                          datasetTitle={dataset.title}
+                          location={dataset.location}
+                          revenueShare={dataset.revenue_share}
+                          mintingFee={dataset.minting_fee}
+                          storyExplorerUrl={dataset.story_explorer_url}
+                        />
                         <Button 
                           variant="outline" 
                           className="border-primary/50 text-sm h-9"
