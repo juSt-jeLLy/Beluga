@@ -254,13 +254,15 @@ export default function IPRegistrationDialog({
         await new Promise(resolve => setTimeout(resolve, stepDelay));
       }
 
-      // Call registerIP with sensorDataId
+      // Call registerIP with revenue share and minting fee
       const result = await registerIP(
         sensorData,
         location,
         creatorName.trim(),
         undefined,
-        sensorDataId
+        sensorDataId,
+        revenueNum,  // Pass revenue share
+        feeNum       // Pass minting fee
       );
 
       setRegistrationResult(result);

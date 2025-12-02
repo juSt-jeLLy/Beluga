@@ -20,6 +20,8 @@ export interface IPRegistrationParams {
   creatorName: string;
   creatorAddress: Address;
   imageUrl?: string;
+  revenueShare?: number;
+  mintingFee?: number;
 }
 
 export interface IPRegistrationResult {
@@ -37,7 +39,7 @@ export async function registerSensorDataAsIP(
   walletClient: any
 ): Promise<IPRegistrationResult> {
   try {
-    const { sensorData, location, creatorName, creatorAddress, imageUrl } = params;
+    const { sensorData, location, creatorName, creatorAddress, imageUrl, revenueShare, mintingFee } = params;
     
     // Create Story client with wallet
     const client = createStoryClient(walletClient);
@@ -58,9 +60,10 @@ export async function registerSensorDataAsIP(
     
     // 2. Use image hash from sensor data
     const finalImageUrl = `https://ipfs.io/ipfs/${sensorData.imageHash}`;
-const imageHash = sensorData.imageHash.startsWith('0x') 
-  ? sensorData.imageHash as `0x${string}`
-  : `0x${sensorData.imageHash}` as `0x${string}`;    
+    const imageHash = sensorData.imageHash.startsWith('0x') 
+      ? sensorData.imageHash as `0x${string}`
+      : `0x${sensorData.imageHash}` as `0x${string}`;    
+    
     // 3. Create IP Metadata with AI metadata
     const ipMetadata: IpMetadata = client.ipAsset.generateIpMetadata({
       title: sensorData.title,
@@ -120,7 +123,10 @@ const imageHash = sensorData.imageHash.startsWith('0x')
     const nftIpfsHash = await uploadJSONToIPFS(nftMetadata);
     const nftHash = await getJSONHash(nftMetadata);
     
-    // 6. Register IP Asset with PIL terms
+    // 6. Register IP Asset with PIL terms using user-specified values
+    const finalRevenueShare = revenueShare ?? 10; // Default to 10% if not provided
+    const finalMintingFee = mintingFee ?? 0.01;   // Default to 0.01 if not provided
+    
     const response = await client.ipAsset.registerIpAsset({
       nft: { 
         type: 'mint', 
@@ -129,8 +135,8 @@ const imageHash = sensorData.imageHash.startsWith('0x')
       licenseTermsData: [
         {
           terms: PILFlavor.commercialRemix({
-            commercialRevShare: 10, // 10% revenue share
-            defaultMintingFee: parseEther('0.01'), // 0.01 IP tokens
+            commercialRevShare: finalRevenueShare, // Use user-specified revenue share
+            defaultMintingFee: parseEther(String(finalMintingFee)), // Use user-specified minting fee
             currency: '0x1514000000000000000000000000000000000000', // WIP token on Aeneid
           }),
         },
@@ -174,7 +180,9 @@ export function useIPRegistration(supabaseService?: SupabaseService) {
     location: string,
     creatorName: string,
     imageUrl?: string,
-    sensorDataId?: number
+    sensorDataId?: number,
+    revenueShare?: number,
+    mintingFee?: number
   ): Promise<IPRegistrationResult> => {
     if (!walletClient || !address) {
       return {
@@ -191,6 +199,8 @@ export function useIPRegistration(supabaseService?: SupabaseService) {
           location,
           creatorName,
           creatorAddress: address,
+          revenueShare,
+          mintingFee,
         },
         walletClient
       );
@@ -201,7 +211,7 @@ export function useIPRegistration(supabaseService?: SupabaseService) {
           // Convert licenseTermsIds from bigint[] to string[] for JSON storage
           const licenseTermsIds = registrationResult.licenseTermsIds?.map(id => id.toString());
           
-          // Save IP registration data to database
+          // Save IP registration data to database with revenue share and minting fee
           const saveResult = await supabaseService.saveIPRegistrationData(
             sensorDataId,
             {
@@ -211,6 +221,8 @@ export function useIPRegistration(supabaseService?: SupabaseService) {
               transaction_hash: registrationResult.txHash,
               license_terms_ids: licenseTermsIds,
               metadata_url: registrationResult.metadataUrl,
+              revenue_share: revenueShare ?? 10,      // Save user-specified revenue share
+              minting_fee: mintingFee ?? 0.01,        // Save user-specified minting fee
             }
           );
           
