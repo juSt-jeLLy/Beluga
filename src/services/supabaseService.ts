@@ -23,6 +23,8 @@ export interface SensorDataRecord {
   license_terms_ids?: string[];
   image_hash?: string;
   metadata_url?: string;
+  revenue_share?: number; // percentage (e.g., 10.00 for 10%)
+  minting_fee?: number;
   
   created_at?: string;
   updated_at?: string;
@@ -98,6 +100,8 @@ export class SupabaseService {
       transaction_hash?: string;
       license_terms_ids?: string[];
       metadata_url?: string;
+      revenue_share?: number;
+      minting_fee?: number;
     }
   ): Promise<{ success: boolean; error?: string }> {
     try {
@@ -110,6 +114,8 @@ export class SupabaseService {
           transaction_hash: ipRegistrationData.transaction_hash,
           license_terms_ids: ipRegistrationData.license_terms_ids,
           metadata_url: ipRegistrationData.metadata_url,
+          revenue_share: ipRegistrationData.revenue_share,
+          minting_fee: ipRegistrationData.minting_fee,
           registered_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })

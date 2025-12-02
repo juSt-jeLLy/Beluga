@@ -9,7 +9,7 @@ import { useIPRegistration } from '@/utils/ipRegistrationService';
 import { SensorData } from '@/services/gmailService';
 import { Loader2, CheckCircle, XCircle, ExternalLink, Sparkles, Upload, FileCheck, Coins, Shield, Zap, Info } from 'lucide-react';
 import { networkInfo } from '@/utils/config';
-import { SupabaseService } from '@/utils/supabaseService';
+import { SupabaseService } from '@/services/supabaseService';
 
 interface IPRegistrationDialogProps {
   open: boolean;
