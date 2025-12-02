@@ -7,6 +7,7 @@ export interface LicenseMintParams {
   ipId: Address;
   licenseTermsId: number;
   amount: number;
+  receiver?: Address;
 }
 
 export interface LicenseMintResult {
@@ -18,18 +19,20 @@ export interface LicenseMintResult {
 
 export async function mintLicenseTokens(
   params: LicenseMintParams,
-  walletClient: any
+  walletClient: any,
+  connectedAddress: Address
 ): Promise<LicenseMintResult> {
   try {
-    const { ipId, licenseTermsId, amount } = params;
+    const { ipId, licenseTermsId, amount, receiver } = params;
     
     // Create Story client with wallet
     const client = createStoryClient(walletClient);
     
-    // Mint License Tokens
+    // Mint License Tokens - use receiver if provided, otherwise use connected wallet
     const response = await client.license.mintLicenseTokens({
       licenseTermsId: licenseTermsId,
       licensorIpId: ipId,
+      receiver: receiver || connectedAddress,
       amount: amount,
     });
     
@@ -56,7 +59,8 @@ export function useLicenseMinting() {
   const mintLicense = async (
     ipId: Address,
     licenseTermsId: number,
-    amount: number
+    amount: number,
+    receiver?: Address
   ): Promise<LicenseMintResult> => {
     if (!walletClient || !address) {
       return {
@@ -71,8 +75,10 @@ export function useLicenseMinting() {
           ipId,
           licenseTermsId,
           amount,
+          receiver,
         },
-        walletClient
+        walletClient,
+        address
       );
       
       return result;

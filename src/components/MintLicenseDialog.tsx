@@ -42,6 +42,7 @@ export const MintLicenseDialog = ({
   const [amount, setAmount] = useState(1);
   const [loading, setLoading] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [receiver, setReceiver] = useState<string>("");
 
   // Get the first license term ID (typically the one we want to use)
   const licenseTermId = licenseTermsId && licenseTermsId.length > 0 
@@ -74,7 +75,8 @@ export const MintLicenseDialog = ({
       const result = await mintLicense(
         ipId as Address,
         licenseTermId,
-        amount
+        amount,
+        receiver && receiver.trim() ? (receiver as Address) : undefined
       );
 
       if (result.success) {
@@ -96,6 +98,7 @@ export const MintLicenseDialog = ({
         // Reset and close after success
         setTimeout(() => {
           setAmount(1);
+          setReceiver("");
           setOpen(false);
           setTxHash(null);
         }, 3000);
@@ -233,6 +236,26 @@ export const MintLicenseDialog = ({
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <span className="inline-block w-1 h-1 rounded-full bg-primary"></span>
                   Minimum: 1 license per transaction
+                </p>
+              </div>
+
+              {/* Receiver Address Input (Optional) */}
+              <div className="space-y-2">
+                <Label htmlFor="receiver" className="text-sm font-medium">
+                  Receiver Address (Optional)
+                </Label>
+                <Input
+                  id="receiver"
+                  type="text"
+                  value={receiver}
+                  onChange={(e) => setReceiver(e.target.value)}
+                  placeholder="0x... (defaults to your wallet)"
+                  disabled={loading}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <span className="inline-block w-1 h-1 rounded-full bg-primary"></span>
+                  Leave empty to mint to your connected wallet
                 </p>
               </div>
 
