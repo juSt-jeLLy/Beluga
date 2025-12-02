@@ -29,6 +29,7 @@ export interface IPRegistrationResult {
   licenseTermsIds?: bigint[];
   storyExplorerUrl?: string;
   error?: string;
+  metadataUrl?: string;
 }
 
 export async function registerSensorDataAsIP(
@@ -151,6 +152,7 @@ const imageHash = sensorData.imageHash.startsWith('0x')
       txHash: response.txHash,
       licenseTermsIds: response.licenseTermsIds,
       storyExplorerUrl: storyExplorerUrl,
+      metadataUrl: `https://ipfs.io/ipfs/${ipIpfsHash}`,
     };
     
   } catch (error: any) {
@@ -208,6 +210,7 @@ export function useIPRegistration(supabaseService?: SupabaseService) {
               story_explorer_url: registrationResult.storyExplorerUrl!,
               transaction_hash: registrationResult.txHash,
               license_terms_ids: licenseTermsIds,
+              metadata_url: registrationResult.metadataUrl,
             }
           );
           
