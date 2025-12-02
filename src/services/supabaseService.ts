@@ -21,7 +21,8 @@ export interface SensorDataRecord {
   registered_at?: string;
   transaction_hash?: string;
   license_terms_ids?: string[];
-  image_hash?: string; // ADD THIS LINE
+  image_hash?: string;
+  metadata_url?: string;
   
   created_at?: string;
   updated_at?: string;
@@ -96,6 +97,7 @@ export class SupabaseService {
       story_explorer_url: string;
       transaction_hash?: string;
       license_terms_ids?: string[];
+      metadata_url?: string;
     }
   ): Promise<{ success: boolean; error?: string }> {
     try {
@@ -107,6 +109,7 @@ export class SupabaseService {
           story_explorer_url: ipRegistrationData.story_explorer_url,
           transaction_hash: ipRegistrationData.transaction_hash,
           license_terms_ids: ipRegistrationData.license_terms_ids,
+          metadata_url: ipRegistrationData.metadata_url,
           registered_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
