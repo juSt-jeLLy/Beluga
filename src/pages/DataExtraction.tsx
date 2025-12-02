@@ -30,6 +30,7 @@ interface SensorDataWithId extends SensorData {
   ip_asset_id?: string; // IP Asset ID if registered
   story_explorer_url?: string; // Story Explorer URL if registered
   registered_at?: string; // Registration timestamp
+  imageHash?: string; // IPFS image hash
 }
 
 const getIconForType = (type: string): React.ReactNode => {
@@ -540,7 +541,7 @@ const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => 
                 
                 // Extract image hash from the data (if it exists in CSV format)
                 const ipfsHashMatch = data.data.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})/);
-                const imageHash = ipfsHashMatch ? ipfsHashMatch[0] : null;
+                const imageHash = ipfsHashMatch ? ipfsHashMatch[0] : data.imageHash;
                 
                 return (
                 <Card 
@@ -603,146 +604,162 @@ const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => 
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="bg-muted/30 p-4 rounded border border-border">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-3">
-                          {(() => {
-                            const items = cleanData.split(',');
-                            const halfPoint = Math.ceil(items.length / 2);
-                            
-                            // Filter out IPFS hashes from display
-                            const filteredItems = items.filter(item => {
-                              const trimmed = item.trim();
-                              return !/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})$/i.test(trimmed);
-                            });
-                            
-                            return filteredItems.slice(0, halfPoint).map((item, idx) => {
-                              const trimmedItem = item.trim();
-                              const isReading = /\d+[.,:]?\d*\s*(lx|°C|%|inches|cm|min|h|m)/.test(trimmedItem);
-                              const isTimestamp = /\d{1,2}:\d{2}/.test(trimmedItem);
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Left column: Data readings */}
+                      <div className="space-y-4">
+                        <div className="bg-muted/30 p-4 rounded border border-border">
+                          <div className="space-y-3">
+                            {(() => {
+                              const items = cleanData.split(',');
                               
-                              return (
-                                <div key={idx}>
-                                  {isReading && !isTimestamp ? (
-                                    <div>
-                                      <h4 className="text-xs font-semibold text-primary mb-1">Reading {idx + 1}</h4>
-                                      <p className="text-sm ml-2">{trimmedItem}</p>
+                              // Filter out IPFS hashes from display
+                              const filteredItems = items.filter(item => {
+                                const trimmed = item.trim();
+                                return !/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})$/i.test(trimmed);
+                              });
+                              
+                              return filteredItems.map((item, idx) => {
+                                const trimmedItem = item.trim();
+                                const isReading = /\d+[.,:]?\d*\s*(lx|°C|%|inches|cm|min|h|m)/.test(trimmedItem);
+                                const isTimestamp = /\d{1,2}:\d{2}/.test(trimmedItem);
+                                
+                                return (
+                                  <div key={idx} className="flex items-start gap-2">
+                                    <div className="w-20 flex-shrink-0">
+                                      <h4 className="text-xs font-semibold text-primary">
+                                        {isReading && !isTimestamp ? (
+                                          <span>Reading {idx + 1}</span>
+                                        ) : isTimestamp ? (
+                                          <span>Time Data</span>
+                                        ) : (
+                                          <span>Info</span>
+                                        )}
+                                      </h4>
                                     </div>
-                                  ) : isTimestamp ? (
-                                    <div>
-                                      <h4 className="text-xs font-semibold text-primary mb-1">Time Data</h4>
-                                      <p className="text-sm ml-2">{trimmedItem}</p>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm text-foreground break-words">
+                                        {trimmedItem}
+                                      </p>
                                     </div>
-                                  ) : (
-                                    <div>
-                                      <h4 className="text-xs font-semibold text-primary mb-1">Info</h4>
-                                      <p className="text-sm ml-2">{trimmedItem}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            });
-                          })()}
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
                         </div>
                         
-                        <div className="space-y-3">
-                          {(() => {
-                            const items = cleanData.split(',');
-                            const halfPoint = Math.ceil(items.length / 2);
-                            
-                            // Filter out IPFS hashes from display
-                            const filteredItems = items.filter(item => {
-                              const trimmed = item.trim();
-                              return !/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})$/i.test(trimmed);
-                            });
-                            
-                            return filteredItems.slice(halfPoint).map((item, idx) => {
-                              const trimmedItem = item.trim();
-                              const isReading = /\d+[.,:]?\d*\s*(lx|°C|%|inches|cm|min|h|m)/.test(trimmedItem);
-                              const isTimestamp = /\d{1,2}:\d{2}/.test(trimmedItem);
+                        <div className="flex gap-1 pt-3 border-t border-border">
+                          {data.isRegistered ? (
+                            <>
+                              {/* Show disabled "Registered" button for registered data */}
+                              <Button 
+                                size="sm" 
+                                disabled
+                                className="bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:opacity-90 text-xs h-8 flex items-center gap-1"
+                              >
+                                <CheckCircle className="h-3 w-3" />
+                                Registered as IP
+                              </Button>
                               
-                              return (
-                                <div key={idx}>
-                                  {isReading && !isTimestamp ? (
-                                    <div>
-                                      <h4 className="text-xs font-semibold text-primary mb-1">Reading {halfPoint + idx + 1}</h4>
-                                      <p className="text-sm ml-2">{trimmedItem}</p>
-                                    </div>
-                                  ) : isTimestamp ? (
-                                    <div>
-                                      <h4 className="text-xs font-semibold text-primary mb-1">Time Data</h4>
-                                      <p className="text-sm ml-2">{trimmedItem}</p>
-                                    </div>
-                                  ) : (
-                                    <div>
-                                      <h4 className="text-xs font-semibold text-primary mb-1">Info</h4>
-                                      <p className="text-sm ml-2">{trimmedItem}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Show image hash separately if it exists */}
-                    {imageHash && (
-                      <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
-                        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                          <Image className="h-3 w-3" />
-                          <span className="text-xs font-semibold">Image Hash:</span>
-                          <span className="text-xs font-mono truncate">{imageHash}</span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="flex gap-1 pt-3 border-t border-border">
-                      {data.isRegistered ? (
-                        <>
-                          {/* Show disabled "Registered" button for registered data */}
-                          <Button 
-                            size="sm" 
-                            disabled
-                            className="bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:opacity-90 text-xs h-8 flex items-center gap-1"
-                          >
-                            <CheckCircle className="h-3 w-3" />
-                            Registered as IP
-                          </Button>
-                          
-                          {/* Show "View IP" button that links to Story Explorer */}
-                          {data.story_explorer_url && (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="border-purple-500/50 text-purple-600 text-xs h-8 flex items-center gap-1"
-                              onClick={() => window.open(data.story_explorer_url, '_blank')}
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              View IP
-                            </Button>
+                              {/* Show "View IP" button that links to Story Explorer */}
+                              {data.story_explorer_url && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  className="border-purple-500/50 text-purple-600 text-xs h-8 flex items-center gap-1"
+                                  onClick={() => window.open(data.story_explorer_url, '_blank')}
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  View IP
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {/* Show "Register as IP" button for unregistered data */}
+                              <Button 
+                                size="sm" 
+                                className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8"
+                                onClick={() => handleRegisterAsIP(data, location)}
+                              >
+                                Register as IP
+                              </Button>
+                              <Button size="sm" variant="outline" className="border-primary/50 text-xs h-8">
+                                View History
+                              </Button>
+                              <Button size="sm" variant="outline" className="border-secondary/50 text-xs h-8">
+                                Export Data
+                              </Button>
+                            </>
                           )}
-                        </>
-                      ) : (
-                        <>
-                          {/* Show "Register as IP" button for unregistered data */}
-                          <Button 
-                            size="sm" 
-                            className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-xs h-8"
-                            onClick={() => handleRegisterAsIP(data, location)}
-                          >
-                            Register as IP
-                          </Button>
-                          <Button size="sm" variant="outline" className="border-primary/50 text-xs h-8">
-                            View History
-                          </Button>
-                          <Button size="sm" variant="outline" className="border-secondary/50 text-xs h-8">
-                            Export Data
-                          </Button>
-                        </>
-                      )}
+                        </div>
+                      </div>
+                      
+                      {/* Right column: Image display */}
+                      <div className="space-y-4">
+                        {imageHash ? (
+                          <>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-semibold text-foreground flex items-center gap-1">
+                                  <Image className="h-3 w-3" />
+                                  Captured Image
+                                </h3>
+                                <Badge variant="outline" className="text-xs">
+                                  IPFS
+                                </Badge>
+                              </div>
+                              <div className="bg-muted/30 rounded-lg border border-border overflow-hidden aspect-video relative">
+                                <img
+                                  src={`https://ipfs.io/ipfs/${imageHash}`}
+                                  alt="Sensor captured image"
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    // If image fails to load, show a fallback
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    // Create fallback div
+                                    const parent = target.parentElement;
+                                    if (parent) {
+                                      const fallback = document.createElement('div');
+                                      fallback.className = 'w-full h-full flex flex-col items-center justify-center bg-muted/50 p-4';
+                                      fallback.innerHTML = `
+                                        <div class="text-center">
+                                          <Image class="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                                          <p class="text-xs text-muted-foreground">Image not available</p>
+                                        </div>
+                                      `;
+                                      parent.appendChild(fallback);
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                <a
+                                  href={`https://ipfs.io/ipfs/${imageHash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline flex items-center gap-1"
+                                >
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                  View original on IPFS
+                                </a>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center bg-muted/30 rounded-lg border border-dashed border-border p-6 text-center">
+                            <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-3">
+                              <Image className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <h3 className="text-sm font-semibold mb-1">No Image Available</h3>
+                            <p className="text-xs text-muted-foreground">
+                              This sensor reading does not contain an image hash
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
