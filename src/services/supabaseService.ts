@@ -30,6 +30,64 @@ export interface SensorDataRecord {
   updated_at?: string;
 }
 
+export interface LicenseRecord {
+  id?: number;
+  sensor_data_id: number;
+  license_token_ids: string[];
+  amount: number;
+  ip_asset_id: string;
+  license_terms_id: string;
+  transaction_hash: string;
+  story_explorer_tx_url?: string;
+  minter_address: string;
+  receiver_address: string;
+  minting_fee_paid?: number;
+  unit_minting_fee?: number;
+  revenue_share_percentage?: number;
+  minted_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DatasetLicenseStats {
+  sensor_data_id: number;
+  ip_asset_id: string;
+  type: string;
+  title: string;
+  location?: string;
+  total_license_transactions: number;
+  total_licenses_minted: number;
+  unique_minters: number;
+  unique_license_holders: number;
+  total_revenue_generated: number;
+  last_minted_at?: string;
+}
+
+export interface AddressLicenseHoldings {
+  receiver_address: string;
+  unique_datasets_licensed: number;
+  total_licenses_held: number;
+  total_spent: number;
+  licensed_ip_assets: string[];
+  last_license_acquired?: string;
+}
+
+export interface RecentLicenseActivity {
+  id: number;
+  sensor_data_id: number;
+  dataset_title: string;
+  dataset_type: string;
+  location?: string;
+  ip_asset_id: string;
+  amount: number;
+  minter_address: string;
+  receiver_address: string;
+  minting_fee_paid?: number;
+  transaction_hash: string;
+  story_explorer_tx_url?: string;
+  minted_at: string;
+}
+
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
@@ -131,6 +189,200 @@ export class SupabaseService {
     } catch (error: any) {
       console.error('Save IP registration error:', error);
       return { success: false, error: error.message || 'Failed to save IP registration' };
+    }
+  }
+
+  /**
+   * Save license minting data to licenses table
+   * This should be called AFTER successful license minting
+   */
+  async saveLicenseMinting(licenseData: Omit<LicenseRecord, 'id' | 'created_at' | 'updated_at' | 'minted_at'>): Promise<{ success: boolean; data?: LicenseRecord; error?: string }> {
+    try {
+      const { data: insertedData, error } = await this.client
+        .from('licenses')
+        .insert([{
+          ...licenseData,
+          minted_at: new Date().toISOString(),
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase save license minting error:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log(`License minting data saved for sensor data ID: ${licenseData.sensor_data_id}`);
+      return { success: true, data: insertedData };
+    } catch (error: any) {
+      console.error('Save license minting error:', error);
+      return { success: false, error: error.message || 'Failed to save license minting' };
+    }
+  }
+
+  /**
+   * Fetch all licenses with optional filters
+   */
+  async fetchLicenses(filters?: {
+    sensor_data_id?: number;
+    minter_address?: string;
+    receiver_address?: string;
+    ip_asset_id?: string;
+    limit?: number;
+  }): Promise<{ success: boolean; data?: LicenseRecord[]; error?: string }> {
+    try {
+      let query = this.client
+        .from('licenses')
+        .select('*')
+        .order('minted_at', { ascending: false });
+
+      if (filters?.sensor_data_id) {
+        query = query.eq('sensor_data_id', filters.sensor_data_id);
+      }
+
+      if (filters?.minter_address) {
+        query = query.eq('minter_address', filters.minter_address);
+      }
+
+      if (filters?.receiver_address) {
+        query = query.eq('receiver_address', filters.receiver_address);
+      }
+
+      if (filters?.ip_asset_id) {
+        query = query.eq('ip_asset_id', filters.ip_asset_id);
+      }
+
+      if (filters?.limit) {
+        query = query.limit(filters.limit);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Supabase fetch licenses error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data: data || [] };
+    } catch (error: any) {
+      console.error('Fetch licenses error:', error);
+      return { success: false, error: error.message || 'Failed to fetch licenses' };
+    }
+  }
+
+  /**
+   * Get dataset license statistics
+   */
+  async getDatasetLicenseStats(sensorDataId?: number): Promise<{ success: boolean; data?: DatasetLicenseStats[]; error?: string }> {
+    try {
+      let query = this.client
+        .from('dataset_license_stats')
+        .select('*');
+
+      if (sensorDataId) {
+        query = query.eq('sensor_data_id', sensorDataId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Supabase dataset license stats error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data: data || [] };
+    } catch (error: any) {
+      console.error('Get dataset license stats error:', error);
+      return { success: false, error: error.message || 'Failed to get dataset license stats' };
+    }
+  }
+
+  /**
+   * Get address license holdings
+   */
+  async getAddressLicenseHoldings(receiverAddress?: string): Promise<{ success: boolean; data?: AddressLicenseHoldings[]; error?: string }> {
+    try {
+      let query = this.client
+        .from('address_license_holdings')
+        .select('*');
+
+      if (receiverAddress) {
+        query = query.eq('receiver_address', receiverAddress);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Supabase address license holdings error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data: data || [] };
+    } catch (error: any) {
+      console.error('Get address license holdings error:', error);
+      return { success: false, error: error.message || 'Failed to get address license holdings' };
+    }
+  }
+
+  /**
+   * Get recent license activity
+   */
+  async getRecentLicenseActivity(limit: number = 100): Promise<{ success: boolean; data?: RecentLicenseActivity[]; error?: string }> {
+    try {
+      const { data, error } = await this.client
+        .from('recent_license_activity')
+        .select('*')
+        .limit(limit);
+
+      if (error) {
+        console.error('Supabase recent license activity error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data: data || [] };
+    } catch (error: any) {
+      console.error('Get recent license activity error:', error);
+      return { success: false, error: error.message || 'Failed to get recent license activity' };
+    }
+  }
+
+  /**
+   * Call stored procedure to get dataset license stats
+   */
+  async callGetDatasetLicenseStats(datasetId: number): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const { data, error } = await this.client
+        .rpc('get_dataset_license_stats', { dataset_id: datasetId });
+
+      if (error) {
+        console.error('Supabase RPC get_dataset_license_stats error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Call get_dataset_license_stats error:', error);
+      return { success: false, error: error.message || 'Failed to call get_dataset_license_stats' };
+    }
+  }
+
+  /**
+   * Call stored procedure to get address licenses
+   */
+  async callGetAddressLicenses(holderAddress: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const { data, error } = await this.client
+        .rpc('get_address_licenses', { holder_address: holderAddress });
+
+      if (error) {
+        console.error('Supabase RPC get_address_licenses error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Call get_address_licenses error:', error);
+      return { success: false, error: error.message || 'Failed to call get_address_licenses' };
     }
   }
 

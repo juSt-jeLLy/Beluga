@@ -13,9 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useLicenseMinting } from "@/utils/licenseMintingService";
-import { Loader2, ShoppingCart, Coins, Percent, Info } from "lucide-react";
+import { Loader2, ShoppingCart, Coins, Percent } from "lucide-react";
 import { Address } from "viem";
 import { MintSuccessDialog } from "@/components/MintSuccessDialog";
+import { SupabaseService } from "@/services/supabaseService";
 
 interface MintLicenseDialogProps {
   ipId: string;
@@ -25,6 +26,8 @@ interface MintLicenseDialogProps {
   revenueShare?: number;
   mintingFee?: number;
   storyExplorerUrl?: string;
+  sensorDataId?: number; // Add sensor data ID
+  supabaseService?: SupabaseService; // Add supabase service
 }
 
 export const MintLicenseDialog = ({
@@ -35,9 +38,11 @@ export const MintLicenseDialog = ({
   revenueShare = 10,
   mintingFee = 0.01,
   storyExplorerUrl,
+  sensorDataId,
+  supabaseService,
 }: MintLicenseDialogProps) => {
   const { toast } = useToast();
-  const { mintLicense, isConnected } = useLicenseMinting();
+  const { mintLicense, isConnected } = useLicenseMinting(supabaseService);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -84,7 +89,10 @@ export const MintLicenseDialog = ({
         ipId as Address,
         licenseTermId,
         amount,
-        receiverAddr
+        receiverAddr,
+        sensorDataId, // Pass sensor data ID for database tracking
+        mintingFee, // Pass unit minting fee
+        revenueShare // Pass revenue share
       );
 
       if (result.success) {
@@ -203,6 +211,12 @@ export const MintLicenseDialog = ({
                     <p className="text-xs text-muted-foreground mb-1">License Terms ID</p>
                     <p className="font-mono text-sm font-semibold text-primary">{licenseTermId}</p>
                   </div>
+                  {sensorDataId && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Dataset ID</p>
+                      <p className="font-mono text-sm font-semibold text-primary">#{sensorDataId}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
