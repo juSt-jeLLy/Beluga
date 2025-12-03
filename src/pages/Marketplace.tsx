@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -130,15 +130,12 @@ const Marketplace = () => {
   const fetchRegisteredDatasets = async () => {
     setLoading(true);
     try {
-      // Fetch all registered IP datasets
       const result = await supabaseService.fetchSensorData({
-        has_ip_registration: true // Only get registered data
+        has_ip_registration: true
       });
 
       if (result.success && result.data && result.data.length > 0) {
-        // Transform data to marketplace format
         const transformedData: MarketplaceDataset[] = result.data.map(record => {
-          // Create a description from the data
           const dataPreview = record.data.length > 100 
             ? record.data.substring(0, 100) + '...' 
             : record.data;
@@ -186,7 +183,6 @@ const Marketplace = () => {
   };
 
   const handleViewDetails = (dataset: MarketplaceDataset) => {
-    // Show more details about the dataset
     toast({
       title: dataset.title,
       description: `Location: ${dataset.location || 'Unknown'}\nRecorded: ${formatDateTime(dataset.timestamp)}`,
@@ -284,7 +280,6 @@ const Marketplace = () => {
             </div>
           ) : (
             <>
-              {/* Dataset Grid - 3 columns on large screens */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
                 {datasets.map((dataset, index) => (
                   <Card 
@@ -318,7 +313,6 @@ const Marketplace = () => {
                         </Badge>
                       </div>
                       
-                      {/* Location and Timestamp Highlight */}
                       <div className="space-y-2 mt-3">
                         {dataset.location && (
                           <div className="flex items-center gap-2 text-sm bg-blue-500/5 p-2 rounded border border-blue-500/20">
@@ -360,7 +354,6 @@ const Marketplace = () => {
                         </div>
                       </div>
                       
-                      {/* License Terms Info */}
                       {(dataset.revenue_share || dataset.minting_fee) && (
                         <div className="flex gap-2 text-xs">
                           {dataset.revenue_share && (
@@ -385,6 +378,8 @@ const Marketplace = () => {
                           revenueShare={dataset.revenue_share}
                           mintingFee={dataset.minting_fee}
                           storyExplorerUrl={dataset.story_explorer_url}
+                          sensorDataId={dataset.id}
+                          supabaseService={supabaseService}
                         />
                         <Button 
                           variant="outline" 
@@ -408,7 +403,6 @@ const Marketplace = () => {
                 ))}
               </div>
               
-              {/* Stats Footer */}
               <div className="mt-12 pt-8 border-t border-border">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-4xl mx-auto text-center">
                   <div>
@@ -439,7 +433,6 @@ const Marketplace = () => {
           )}
         </div>
         
-        {/* Floating background elements */}
         <div className="absolute top-1/3 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-float"></div>
         <div className="absolute bottom-1/3 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-float" style={{animationDelay: '3s'}}></div>
       </div>
