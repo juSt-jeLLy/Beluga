@@ -26,8 +26,8 @@ interface MintLicenseDialogProps {
   revenueShare?: number;
   mintingFee?: number;
   storyExplorerUrl?: string;
-  sensorDataId?: number; // Add sensor data ID
-  supabaseService?: SupabaseService; // Add supabase service
+  sensorDataId?: number;
+  supabaseService?: SupabaseService;
 }
 
 export const MintLicenseDialog = ({
@@ -44,7 +44,7 @@ export const MintLicenseDialog = ({
   const { toast } = useToast();
   const { mintLicense, isConnected } = useLicenseMinting(supabaseService);
   const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState(1);
+  const [amount, setAmount] = useState<string>("1");
   const [loading, setLoading] = useState(false);
   const [receiver, setReceiver] = useState<string>("");
   
@@ -59,7 +59,25 @@ export const MintLicenseDialog = ({
   // Get the first license term ID (typically the one we want to use)
   const licenseTermId = licenseTermsId && licenseTermsId.length > 0 
     ? Number(licenseTermsId[0]) 
-    : 1; // Default to 1 if not available
+    : 1;
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    // Allow empty string for clearing
+    if (value === "") {
+      setAmount("");
+      return;
+    }
+    
+    // Parse the number
+    const numValue = parseInt(value);
+    
+    // Only update if it's a valid number
+    if (!isNaN(numValue)) {
+      setAmount(value);
+    }
+  };
 
   const handleMint = async () => {
     if (!isConnected) {
@@ -71,7 +89,9 @@ export const MintLicenseDialog = ({
       return;
     }
 
-    if (amount < 1) {
+    const numAmount = parseInt(amount);
+    
+    if (isNaN(numAmount) || numAmount < 1) {
       toast({
         title: "Invalid Amount",
         description: "Please enter a valid number of licenses (minimum 1)",
@@ -88,11 +108,11 @@ export const MintLicenseDialog = ({
       const result = await mintLicense(
         ipId as Address,
         licenseTermId,
-        amount,
+        numAmount,
         receiverAddr,
-        sensorDataId, // Pass sensor data ID for database tracking
-        mintingFee, // Pass unit minting fee
-        revenueShare // Pass revenue share
+        sensorDataId,
+        mintingFee,
+        revenueShare
       );
 
       if (result.success) {
@@ -108,7 +128,7 @@ export const MintLicenseDialog = ({
         setShowSuccessDialog(true);
         
         // Reset form
-        setAmount(1);
+        setAmount("1");
         setReceiver("");
       } else {
         toast({
@@ -129,7 +149,8 @@ export const MintLicenseDialog = ({
     }
   };
 
-  const totalCost = (amount * mintingFee).toFixed(4);
+  const numAmount = parseInt(amount) || 0;
+  const totalCost = (numAmount * mintingFee).toFixed(4);
 
   return (
     <>
@@ -239,7 +260,7 @@ export const MintLicenseDialog = ({
                       type="number"
                       min="1"
                       value={amount}
-                      onChange={(e) => setAmount(Math.max(1, parseInt(e.target.value) || 1))}
+                      onChange={handleAmountChange}
                       placeholder="Enter amount"
                       disabled={loading}
                       className="text-lg font-semibold pr-20 h-14"
@@ -283,7 +304,7 @@ export const MintLicenseDialog = ({
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-muted-foreground">Quantity</span>
-                      <span className="font-medium">× {amount}</span>
+                      <span className="font-medium">× {numAmount}</span>
                     </div>
                     <div className="border-t border-primary/20 pt-3 flex justify-between items-center">
                       <span className="font-semibold text-lg">Total Cost</span>
@@ -304,7 +325,7 @@ export const MintLicenseDialog = ({
                   </Button>
                   <Button
                     onClick={handleMint}
-                    disabled={loading || !isConnected}
+                    disabled={loading || !isConnected || numAmount < 1}
                     className="flex-1 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-semibold"
                   >
                     {loading ? (
@@ -315,7 +336,7 @@ export const MintLicenseDialog = ({
                     ) : (
                       <>
                         <ShoppingCart className="h-4 w-4 mr-2" />
-                        Mint {amount} License{amount > 1 ? 's' : ''}
+                        Mint {numAmount} License{numAmount > 1 ? 's' : ''}
                       </>
                     )}
                   </Button>
@@ -342,7 +363,7 @@ export const MintLicenseDialog = ({
           onOpenChange={setShowSuccessDialog}
           txHash={successData.txHash}
           licenseTokenIds={successData.licenseTokenIds}
-          amount={amount}
+          amount={numAmount}
           datasetTitle={datasetTitle}
           receiverAddress={successData.receiverAddress}
         />

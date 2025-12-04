@@ -51,7 +51,7 @@ const Index = () => {
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-4xl mx-auto text-center space-y-8 animate-slide-up">
             <div className="inline-block px-4 py-2 bg-primary/10 border border-primary/20 rounded-full mb-4 animate-glow">
-              <span className="text-primary font-semibold">Powered by Blockchain Technology</span>
+              <span className="text-primary font-semibold">Powered by Story Protocol</span>
             </div>
             
             <h1 className="text-6xl md:text-7xl font-bold leading-tight">
