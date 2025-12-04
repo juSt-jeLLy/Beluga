@@ -3,12 +3,13 @@ import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Thermometer, Sun, Droplets, Sprout, CloudRain, TrendingUp, Shield, Loader2, ExternalLink, AlertCircle,MapPin } from "lucide-react";
+import { Thermometer, Sun, Droplets, Sprout, CloudRain, TrendingUp, Shield, Loader2, ExternalLink, AlertCircle, MapPin, Coins, CheckCircle } from "lucide-react";
 import { useAccount } from "wagmi";
 import { useToast } from "@/hooks/use-toast";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { SensorDataRecord } from "@/services/supabaseService";
-import { CheckCircle } from "lucide-react";
+import { useRevenueClaiming, useClaimableRevenue } from "@/utils/revenueClaimingService";
+import { Address } from "viem";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -73,6 +74,152 @@ const getGradientForType = (type: string): string => {
   }
 };
 
+// Component to display and claim revenue for each dataset
+const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
+  const { claimableAmount, loading: fetchingRevenue, refetch } = useClaimableRevenue(dataset.ip_asset_id as Address);
+  const { claimRevenue, claiming } = useRevenueClaiming();
+  const { toast } = useToast();
+
+  // Format claimable amount to WIP tokens (assuming 18 decimals)
+  const formattedAmount = claimableAmount 
+    ? (parseFloat(claimableAmount) / 1e18).toFixed(6)
+    : '0.000000';
+
+  const handleClaimRevenue = async () => {
+    try {
+      const result = await claimRevenue(dataset.ip_asset_id as Address);
+      
+      if (result.success) {
+        const txHashDisplay = result.txHashes && result.txHashes.length > 0
+          ? result.txHashes[0].slice(0, 10) + '...'
+          : 'Success';
+        
+        toast({
+          title: "Revenue Claimed Successfully! 🎉",
+          description: `Transaction: ${txHashDisplay}`,
+        });
+        
+        // Refetch claimable revenue after successful claim
+        setTimeout(() => refetch(), 2000);
+      } else {
+        toast({
+          title: "Claim Failed",
+          description: result.error || "Failed to claim revenue",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('Claim error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <Card className="glass-card hover-lift">
+      <div className={`h-1 bg-gradient-to-r ${dataset.gradient}`}></div>
+      <CardHeader>
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className={`w-14 h-14 bg-gradient-to-br ${dataset.gradient} rounded-xl flex items-center justify-center`}>
+              <div className="text-white">
+                {dataset.icon}
+              </div>
+            </div>
+            <div>
+              <CardTitle className="text-xl">{dataset.title}</CardTitle>
+              <CardDescription className="mt-1">
+                IP Asset ID: <span className="font-mono font-semibold">{dataset.ip_asset_id.slice(0, 12)}...</span>
+                {dataset.location && (
+                  <span className="ml-3 text-blue-500">
+                    <MapPin className="inline h-3 w-3 mr-1" />
+                    {dataset.location}
+                  </span>
+                )}
+              </CardDescription>
+            </div>
+          </div>
+          <Badge className="bg-green-500/20 text-green-600 border-green-500/30">
+            <CheckCircle className="h-2.5 w-2.5 mr-1" />
+            {dataset.status}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div>
+            <p className="text-sm text-muted-foreground">Registration Date</p>
+            <p className="font-semibold">{dataset.registrationDate}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Sensor Type</p>
+            <p className="font-semibold capitalize">{dataset.type}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Health Status</p>
+            <p className="font-semibold">{dataset.sensor_health}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Claimable Revenue</p>
+            {fetchingRevenue ? (
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            ) : (
+              <p className="font-bold text-green-600 flex items-center gap-1">
+                <Coins className="h-3 w-3" />
+                {formattedAmount} WIP
+              </p>
+            )}
+          </div>
+        </div>
+        
+        <div className="flex gap-2 pt-4 border-t border-border">
+          <Button 
+            size="sm" 
+            className="bg-gradient-to-r from-primary to-secondary hover:opacity-90"
+          >
+            View Analytics
+          </Button>
+          
+          <Button 
+            size="sm" 
+            variant="outline"
+            className="border-green-500/50 text-green-600 hover:bg-green-500/10"
+            onClick={handleClaimRevenue}
+            disabled={claiming || fetchingRevenue || parseFloat(formattedAmount) === 0}
+          >
+            {claiming ? (
+              <>
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Claiming...
+              </>
+            ) : (
+              <>
+                <Coins className="h-3 w-3 mr-1" />
+                Claim Revenue
+              </>
+            )}
+          </Button>
+          
+          {dataset.story_explorer_url && (
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="border-purple-500/50 text-purple-600"
+              onClick={() => window.open(dataset.story_explorer_url, '_blank')}
+            >
+              <ExternalLink className="h-3 w-3 mr-1" />
+              View IP
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 const Profile = () => {
   const { address, isConnected } = useAccount();
   const { toast } = useToast();
@@ -91,18 +238,15 @@ const Profile = () => {
   const fetchRegisteredData = async () => {
     setLoading(true);
     try {
-      // Fetch only data registered through the connected wallet address
       const result = await supabaseService.fetchSensorData({
-        has_ip_registration: true // Only get registered data
+        has_ip_registration: true
       });
 
       if (result.success && result.data) {
-        // Filter by creator_address (current wallet address)
         const myRegisteredData = result.data.filter(
           record => record.creator_address?.toLowerCase() === address?.toLowerCase()
         );
 
-        // Transform data to match the profile format
         const transformedData: RegisteredDataset[] = myRegisteredData.map(record => ({
           id: record.id!,
           ip_asset_id: record.ip_asset_id!,
@@ -146,8 +290,8 @@ const Profile = () => {
     }
   };
 
-  const totalEarnings = registeredData.length * 0; // Placeholder - you might want to fetch actual earnings from blockchain
-  const totalSubscribers = registeredData.length * 0; // Placeholder - fetch actual subscribers if available
+  const totalEarnings = registeredData.length * 0;
+  const totalSubscribers = registeredData.length * 0;
 
   if (!isConnected) {
     return (
@@ -163,9 +307,6 @@ const Profile = () => {
             </h1>
             <p className="text-xl text-muted-foreground mb-8">
               Please connect your wallet to view your registered IP assets
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Your registered datasets will appear here once you connect your wallet
             </p>
           </div>
         </div>
@@ -207,9 +348,8 @@ const Profile = () => {
               Your <span className="gradient-text">Registered IP</span>
             </h1>
             <p className="text-xl text-muted-foreground">
-              Track your IP-protected datasets registered through your wallet
+              Track your IP-protected datasets and claim revenue
             </p>
-           
           </div>
 
           {/* Stats Overview */}
@@ -222,8 +362,8 @@ const Profile = () => {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Earnings</p>
-                    <p className="text-3xl font-bold gradient-text">{totalEarnings.toFixed(1)} IP</p>
-                    <p className="text-xs text-muted-foreground mt-1">(Placeholder - Real earnings coming soon)</p>
+                    <p className="text-3xl font-bold gradient-text">{totalEarnings.toFixed(1)} WIP</p>
+                    <p className="text-xs text-muted-foreground mt-1">(Track via claim buttons)</p>
                   </div>
                 </div>
               </CardContent>
@@ -247,12 +387,12 @@ const Profile = () => {
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
-                    <TrendingUp className="h-7 w-7 text-white" />
+                    <Coins className="h-7 w-7 text-white" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Total Subscribers</p>
-                    <p className="text-3xl font-bold">{totalSubscribers}</p>
-                    <p className="text-xs text-muted-foreground mt-1">(Placeholder - Real subscribers coming soon)</p>
+                    <p className="text-sm text-muted-foreground">Revenue Streams</p>
+                    <p className="text-3xl font-bold">{registeredData.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1">(Active IP assets)</p>
                   </div>
                 </div>
               </CardContent>
@@ -283,86 +423,13 @@ const Profile = () => {
               </div>
             ) : (
               registeredData.map((item, index) => (
-                <Card 
+                <div 
                   key={item.id}
-                  className="glass-card hover-lift animate-slide-in-right"
+                  className="animate-slide-in-right"
                   style={{animationDelay: `${index * 0.1}s`}}
                 >
-                  <div className={`h-1 bg-gradient-to-r ${item.gradient}`}></div>
-                  <CardHeader>
-                    <div className="flex items-start justify-between flex-wrap gap-4">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-14 h-14 bg-gradient-to-br ${item.gradient} rounded-xl flex items-center justify-center`}>
-                          <div className="text-white">
-                            {item.icon}
-                          </div>
-                        </div>
-                        <div>
-                          <CardTitle className="text-xl">{item.title}</CardTitle>
-                          <CardDescription className="mt-1">
-                            IP Asset ID: <span className="font-mono font-semibold">{item.ip_asset_id.slice(0, 12)}...</span>
-                            {item.location && (
-                              <span className="ml-3 text-blue-500">
-                                <MapPin className="inline h-3 w-3 mr-1" />
-                                {item.location}
-                              </span>
-                            )}
-                          </CardDescription>
-                        </div>
-                      </div>
-                      <Badge className="bg-green-500/20 text-green-600 border-green-500/30">
-                        <CheckCircle className="h-2.5 w-2.5 mr-1" />
-                        {item.status}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Registration Date</p>
-                        <p className="font-semibold">{item.registrationDate}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Sensor Type</p>
-                        <p className="font-semibold capitalize">{item.type}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Health Status</p>
-                        <p className="font-semibold">{item.sensor_health}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Status</p>
-                        <p className="font-semibold text-green-500">Active</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 pt-4 border-t border-border">
-                      <Button 
-                        size="sm" 
-                        className="bg-gradient-to-r from-primary to-secondary hover:opacity-90"
-                      >
-                        View Analytics
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="border-primary/50"
-                      >
-                        Manage Access
-                      </Button>
-                      {item.story_explorer_url && (
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="border-purple-500/50 text-purple-600"
-                          onClick={() => window.open(item.story_explorer_url, '_blank')}
-                        >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          View IP
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                  <DatasetRevenueCard dataset={item} />
+                </div>
               ))
             )}
           </div>
