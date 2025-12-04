@@ -261,6 +261,8 @@ const Profile = () => {
   const [registeredData, setRegisteredData] = useState<RegisteredDataset[]>([]);
   const [totalLicenses, setTotalLicenses] = useState(0);
   const [loadingLicenses, setLoadingLicenses] = useState(false);
+  const [totalEarnings, setTotalEarnings] = useState(0);
+  const [loadingEarnings, setLoadingEarnings] = useState(false);
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
 
   useEffect(() => {
@@ -307,8 +309,11 @@ const Profile = () => {
 
         setRegisteredData(transformedData);
         
-        // Fetch total licenses for all datasets
-        await fetchTotalLicenses(myRegisteredData.map(r => r.id!));
+        // Fetch total licenses and earnings for all datasets
+        await Promise.all([
+          fetchTotalLicenses(myRegisteredData.map(r => r.id!)),
+          fetchTotalEarnings(myRegisteredData.map(r => r.id!))
+        ]);
         
         toast({
           title: "Data Loaded",
@@ -317,6 +322,7 @@ const Profile = () => {
       } else {
         setRegisteredData([]);
         setTotalLicenses(0);
+        setTotalEarnings(0);
       }
     } catch (error: any) {
       console.error('Error fetching registered data:', error);
@@ -362,7 +368,39 @@ const Profile = () => {
     }
   };
 
-  const totalEarnings = registeredData.length * 0;
+  const fetchTotalEarnings = async (datasetIds: number[]) => {
+    if (datasetIds.length === 0) {
+      setTotalEarnings(0);
+      return;
+    }
+
+    setLoadingEarnings(true);
+    try {
+      let totalEarningsSum = 0;
+
+      // Fetch licenses for each dataset and sum minting fees
+      for (const datasetId of datasetIds) {
+        const result = await supabaseService.fetchLicenses({
+          sensor_data_id: datasetId
+        });
+
+        if (result.success && result.data) {
+          // Sum up the minting_fee_paid for each license
+          const datasetEarnings = result.data.reduce((sum, license) => {
+            return sum + (license.minting_fee_paid || 0);
+          }, 0);
+          totalEarningsSum += datasetEarnings;
+        }
+      }
+
+      setTotalEarnings(totalEarningsSum);
+    } catch (error: any) {
+      console.error('Error fetching total earnings:', error);
+      setTotalEarnings(0);
+    } finally {
+      setLoadingEarnings(false);
+    }
+  };
 
   if (!isConnected) {
     return (
@@ -433,8 +471,12 @@ const Profile = () => {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Earnings</p>
-                    <p className="text-3xl font-bold gradient-text">{totalEarnings.toFixed(1)} WIP</p>
-                    <p className="text-xs text-muted-foreground mt-1">(Track via claim buttons)</p>
+                    {loadingEarnings ? (
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    ) : (
+                      <p className="text-3xl font-bold gradient-text">{totalEarnings.toFixed(6)} WIP</p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">From all license minting fees</p>
                   </div>
                 </div>
               </CardContent>
