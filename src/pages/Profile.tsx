@@ -10,6 +10,7 @@ import { createSupabaseService } from "@/services/supabaseService";
 import type { SensorDataRecord } from "@/services/supabaseService";
 import { useRevenueClaiming, useClaimableRevenue } from "@/utils/revenueClaimingService";
 import { Address } from "viem";
+import { ClaimRevenueDialog } from "@/components/ClaimRevenueDialog";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -79,6 +80,12 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
   const { claimableAmount, loading: fetchingRevenue, refetch } = useClaimableRevenue(dataset.ip_asset_id as Address);
   const { claimRevenue, claiming } = useRevenueClaiming();
   const { toast } = useToast();
+  
+  // Dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [claimSuccess, setClaimSuccess] = useState(false);
+  const [claimTxHash, setClaimTxHash] = useState<string>("");
+  const [claimError, setClaimError] = useState<string>("");
 
   // Format claimable amount to WIP tokens (assuming 18 decimals)
   const formattedAmount = claimableAmount 
@@ -86,137 +93,164 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
     : '0.000000';
 
   const handleClaimRevenue = async () => {
+    // Reset states
+    setClaimSuccess(false);
+    setClaimError("");
+    setClaimTxHash("");
+    
+    // Open dialog
+    setDialogOpen(true);
+    
     try {
       const result = await claimRevenue(dataset.ip_asset_id as Address);
       
       if (result.success) {
-        const txHashDisplay = result.txHashes && result.txHashes.length > 0
-          ? result.txHashes[0].slice(0, 10) + '...'
-          : 'Success';
+        const txHash = result.txHashes && result.txHashes.length > 0
+          ? result.txHashes[0]
+          : '';
         
-        toast({
-          title: "Revenue Claimed Successfully! 🎉",
-          description: `Transaction: ${txHashDisplay}`,
-        });
+        setClaimTxHash(txHash);
+        setClaimSuccess(true);
         
         // Refetch claimable revenue after successful claim
         setTimeout(() => refetch(), 2000);
       } else {
-        toast({
-          title: "Claim Failed",
-          description: result.error || "Failed to claim revenue",
-          variant: "destructive",
-        });
+        setClaimError(result.error || "Failed to claim revenue");
+        setClaimSuccess(false);
       }
     } catch (error: any) {
       console.error('Claim error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "An unexpected error occurred",
-        variant: "destructive",
-      });
+      setClaimError(error.message || "An unexpected error occurred");
+      setClaimSuccess(false);
+    }
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      // Reset states when dialog is closed
+      setTimeout(() => {
+        setClaimSuccess(false);
+        setClaimError("");
+        setClaimTxHash("");
+      }, 300);
     }
   };
 
   return (
-    <Card className="glass-card hover-lift">
-      <div className={`h-1 bg-gradient-to-r ${dataset.gradient}`}></div>
-      <CardHeader>
-        <div className="flex items-start justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 bg-gradient-to-br ${dataset.gradient} rounded-xl flex items-center justify-center`}>
-              <div className="text-white">
-                {dataset.icon}
+    <>
+      <Card className="glass-card hover-lift">
+        <div className={`h-1 bg-gradient-to-r ${dataset.gradient}`}></div>
+        <CardHeader>
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-4">
+              <div className={`w-14 h-14 bg-gradient-to-br ${dataset.gradient} rounded-xl flex items-center justify-center`}>
+                <div className="text-white">
+                  {dataset.icon}
+                </div>
+              </div>
+              <div>
+                <CardTitle className="text-xl">{dataset.title}</CardTitle>
+                <CardDescription className="mt-1">
+                  IP Asset ID: <span className="font-mono font-semibold">{dataset.ip_asset_id.slice(0, 12)}...</span>
+                  {dataset.location && (
+                    <span className="ml-3 text-blue-500">
+                      <MapPin className="inline h-3 w-3 mr-1" />
+                      {dataset.location}
+                    </span>
+                  )}
+                </CardDescription>
               </div>
             </div>
+            <Badge className="bg-green-500/20 text-green-600 border-green-500/30">
+              <CheckCircle className="h-2.5 w-2.5 mr-1" />
+              {dataset.status}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div>
-              <CardTitle className="text-xl">{dataset.title}</CardTitle>
-              <CardDescription className="mt-1">
-                IP Asset ID: <span className="font-mono font-semibold">{dataset.ip_asset_id.slice(0, 12)}...</span>
-                {dataset.location && (
-                  <span className="ml-3 text-blue-500">
-                    <MapPin className="inline h-3 w-3 mr-1" />
-                    {dataset.location}
-                  </span>
-                )}
-              </CardDescription>
+              <p className="text-sm text-muted-foreground">Registration Date</p>
+              <p className="font-semibold">{dataset.registrationDate}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Sensor Type</p>
+              <p className="font-semibold capitalize">{dataset.type}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Health Status</p>
+              <p className="font-semibold">{dataset.sensor_health}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Claimable Revenue</p>
+              {fetchingRevenue ? (
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              ) : (
+                <p className="font-bold text-green-600 flex items-center gap-1">
+                  <Coins className="h-3 w-3" />
+                  {formattedAmount} WIP
+                </p>
+              )}
             </div>
           </div>
-          <Badge className="bg-green-500/20 text-green-600 border-green-500/30">
-            <CheckCircle className="h-2.5 w-2.5 mr-1" />
-            {dataset.status}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-          <div>
-            <p className="text-sm text-muted-foreground">Registration Date</p>
-            <p className="font-semibold">{dataset.registrationDate}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Sensor Type</p>
-            <p className="font-semibold capitalize">{dataset.type}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Health Status</p>
-            <p className="font-semibold">{dataset.sensor_health}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Claimable Revenue</p>
-            {fetchingRevenue ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            ) : (
-              <p className="font-bold text-green-600 flex items-center gap-1">
-                <Coins className="h-3 w-3" />
-                {formattedAmount} WIP
-              </p>
-            )}
-          </div>
-        </div>
-        
-        <div className="flex gap-2 pt-4 border-t border-border">
-          <Button 
-            size="sm" 
-            className="bg-gradient-to-r from-primary to-secondary hover:opacity-90"
-          >
-            View Analytics
-          </Button>
           
-          <Button 
-            size="sm" 
-            variant="outline"
-            className="border-green-500/50 text-green-600 hover:bg-green-500/10"
-            onClick={handleClaimRevenue}
-            disabled={claiming || fetchingRevenue || parseFloat(formattedAmount) === 0}
-          >
-            {claiming ? (
-              <>
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                Claiming...
-              </>
-            ) : (
-              <>
-                <Coins className="h-3 w-3 mr-1" />
-                Claim Revenue
-              </>
-            )}
-          </Button>
-          
-          {dataset.story_explorer_url && (
+          <div className="flex gap-2 pt-4 border-t border-border">
             <Button 
               size="sm" 
-              variant="outline" 
-              className="border-purple-500/50 text-purple-600"
-              onClick={() => window.open(dataset.story_explorer_url, '_blank')}
+              className="bg-gradient-to-r from-primary to-secondary hover:opacity-90"
             >
-              <ExternalLink className="h-3 w-3 mr-1" />
-              View IP
+              View Analytics
             </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+            
+            <Button 
+              size="sm" 
+              variant="outline"
+              className="border-green-500/50 text-green-600 hover:bg-green-500/10"
+              onClick={handleClaimRevenue}
+              disabled={claiming || fetchingRevenue || parseFloat(formattedAmount) === 0}
+            >
+              {claiming ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Claiming...
+                </>
+              ) : (
+                <>
+                  <Coins className="h-3 w-3 mr-1" />
+                  Claim Revenue
+                </>
+              )}
+            </Button>
+            
+            {dataset.story_explorer_url && (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="border-purple-500/50 text-purple-600"
+                onClick={() => window.open(dataset.story_explorer_url, '_blank')}
+              >
+                <ExternalLink className="h-3 w-3 mr-1" />
+                View IP
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Claim Revenue Dialog */}
+      <ClaimRevenueDialog
+        open={dialogOpen}
+        onOpenChange={handleDialogClose}
+        claiming={claiming}
+        success={claimSuccess}
+        txHash={claimTxHash}
+        claimedAmount={formattedAmount}
+        datasetTitle={dataset.title}
+        ipAssetId={dataset.ip_asset_id}
+        error={claimError}
+      />
+    </>
   );
 };
 
@@ -225,6 +259,8 @@ const Profile = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [registeredData, setRegisteredData] = useState<RegisteredDataset[]>([]);
+  const [totalLicenses, setTotalLicenses] = useState(0);
+  const [loadingLicenses, setLoadingLicenses] = useState(false);
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
 
   useEffect(() => {
@@ -271,12 +307,16 @@ const Profile = () => {
 
         setRegisteredData(transformedData);
         
+        // Fetch total licenses for all datasets
+        await fetchTotalLicenses(myRegisteredData.map(r => r.id!));
+        
         toast({
           title: "Data Loaded",
           description: `Found ${transformedData.length} registered datasets`,
         });
       } else {
         setRegisteredData([]);
+        setTotalLicenses(0);
       }
     } catch (error: any) {
       console.error('Error fetching registered data:', error);
@@ -290,8 +330,39 @@ const Profile = () => {
     }
   };
 
+  const fetchTotalLicenses = async (datasetIds: number[]) => {
+    if (datasetIds.length === 0) {
+      setTotalLicenses(0);
+      return;
+    }
+
+    setLoadingLicenses(true);
+    try {
+      let totalCount = 0;
+
+      // Fetch licenses for each dataset
+      for (const datasetId of datasetIds) {
+        const result = await supabaseService.fetchLicenses({
+          sensor_data_id: datasetId
+        });
+
+        if (result.success && result.data) {
+          // Sum up the amount (number of licenses) for each license record
+          const datasetLicenseCount = result.data.reduce((sum, license) => sum + (license.amount || 0), 0);
+          totalCount += datasetLicenseCount;
+        }
+      }
+
+      setTotalLicenses(totalCount);
+    } catch (error: any) {
+      console.error('Error fetching total licenses:', error);
+      setTotalLicenses(0);
+    } finally {
+      setLoadingLicenses(false);
+    }
+  };
+
   const totalEarnings = registeredData.length * 0;
-  const totalSubscribers = registeredData.length * 0;
 
   if (!isConnected) {
     return (
@@ -390,9 +461,13 @@ const Profile = () => {
                     <Coins className="h-7 w-7 text-white" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Revenue Streams</p>
-                    <p className="text-3xl font-bold">{registeredData.length}</p>
-                    <p className="text-xs text-muted-foreground mt-1">(Active IP assets)</p>
+                    <p className="text-sm text-muted-foreground">Total Licenses</p>
+                    {loadingLicenses ? (
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    ) : (
+                      <p className="text-3xl font-bold">{totalLicenses}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">(Across all datasets)</p>
                   </div>
                 </div>
               </CardContent>
