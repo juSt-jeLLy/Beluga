@@ -8,7 +8,7 @@ import Marketplace from "./pages/Marketplace";
 import DataExtraction from "./pages/DataExtraction";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
-
+import Licenses from "./pages/Licenses";
 const App = () => {
   // Force dark mode
   document.documentElement.classList.add('dark');
@@ -23,6 +23,7 @@ const App = () => {
             <Route path="/" element={<Index />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/extract" element={<DataExtraction />} />
+            <Route path="/licenses" element={<Licenses />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
