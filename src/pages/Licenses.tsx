@@ -20,11 +20,16 @@ import {
   Sprout,
   CloudRain,
   DollarSign,
-  Hash
+  Hash,
+  Info,
+  Image as ImageIcon,
+  User,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { LicenseRecord } from "@/services/supabaseService";
-
+import { getEnrichedMetadata, type EnrichedIPMetadata } from "@/utils/coreMetadataViewService";
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -36,6 +41,9 @@ interface LicenseWithDataset extends LicenseRecord {
   dataset_location?: string;
   icon?: React.ReactNode;
   gradient?: string;
+  metadata?: EnrichedIPMetadata;
+  metadataLoading?: boolean;
+  showMetadata?: boolean;
 }
 
 const getIconForType = (type?: string): React.ReactNode => {
@@ -106,7 +114,6 @@ const Licenses = () => {
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
   const [supabaseClient] = useState(() => createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
 
-
   useEffect(() => {
     if (isConnected && address) {
       fetchUserLicenses();
@@ -120,11 +127,9 @@ const Licenses = () => {
 
     setLoading(true);
     try {
-      // Convert address to lowercase for case-insensitive matching
       const normalizedAddress = address.toLowerCase();
       console.log('Fetching licenses for receiver address:', normalizedAddress);
       
-      // Fetch licenses using case-insensitive search
       const result = await supabaseClient
         .from('licenses')
         .select('*')
@@ -139,12 +144,10 @@ const Licenses = () => {
       }
 
       if (result.data && result.data.length > 0) {
-        // Get all unique sensor data IDs
         const sensorDataIds = [...new Set(result.data.map(l => l.sensor_data_id))];
         
         console.log('Fetching sensor data for IDs:', sensorDataIds);
         
-        // Fetch all sensor data in one query using direct client
         const sensorDataResult = await supabaseClient
           .from('sensor_data')
           .select('*')
@@ -152,12 +155,10 @@ const Licenses = () => {
         
         console.log('Sensor data result:', sensorDataResult);
         
-        // Create a map for quick lookup
         const sensorDataMap = new Map(
           sensorDataResult.data?.map(sd => [sd.id, sd]) || []
         );
         
-        // Enrich licenses with sensor data
         const enrichedLicenses = result.data.map((license) => {
           const sensorData = sensorDataMap.get(license.sensor_data_id);
           
@@ -169,7 +170,9 @@ const Licenses = () => {
             dataset_type: sensorData?.type || 'Unknown',
             dataset_location: sensorData?.location || undefined,
             icon: getIconForType(sensorData?.type),
-            gradient: getGradientForType(sensorData?.type)
+            gradient: getGradientForType(sensorData?.type),
+            showMetadata: false,
+            metadataLoading: false,
           };
         });
 
@@ -195,6 +198,141 @@ const Licenses = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const decodeJsonString = (jsonString?: string) => {
+    if (!jsonString) return null;
+    
+    try {
+      // Remove the data:application/json;base64, prefix
+      const base64Data = jsonString.replace('data:application/json;base64,', '');
+      // Decode base64
+      const decodedString = atob(base64Data);
+      // Parse JSON
+      return JSON.parse(decodedString);
+    } catch (error) {
+      console.error('Error decoding jsonString:', error);
+      return null;
+    }
+  };
+
+  const toggleMetadata = async (licenseId: number | string) => {
+    const license = licenses.find(l => l.id === licenseId);
+    if (!license) return;
+
+    // Toggle visibility
+    if (license.showMetadata) {
+      setLicenses(prev => prev.map(l => 
+        l.id === licenseId ? { ...l, showMetadata: false } : l
+      ));
+      return;
+    }
+
+    // If metadata not loaded yet, fetch it
+    if (!license.metadata && !license.metadataLoading) {
+      setLicenses(prev => prev.map(l => 
+        l.id === licenseId ? { ...l, metadataLoading: true } : l
+      ));
+
+      try {
+        const metadata = await getEnrichedMetadata(license.ip_asset_id as `0x${string}`);
+        console.log('Fetched metadata for', license.ip_asset_id, metadata);
+        
+        // Decode the jsonString if available
+        const decodedJson = decodeJsonString(metadata.jsonString);
+        console.log('Decoded JSON:', decodedJson);
+        
+        // Enhance metadata with decoded data
+        if (decodedJson) {
+          const attributes = decodedJson.attributes || [];
+          const attributesMap = new Map(
+            attributes.map((attr: any) => [attr.trait_type, attr.value])
+          );
+          
+          const ownerValue = attributesMap.get('Owner');
+          const metadataURIValue = attributesMap.get('MetadataURI');
+          const nftTokenURIValue = attributesMap.get('NFTTokenURI');
+          const metadataHashValue = attributesMap.get('MetadataHash');
+          const nftMetadataHashValue = attributesMap.get('NFTMetadataHash');
+          const regDateStr = attributesMap.get('Registration Date');
+          
+          if (ownerValue && typeof ownerValue === 'string') {
+            metadata.owner = ownerValue as `0x${string}`;
+          }
+          if (metadataURIValue && typeof metadataURIValue === 'string') {
+            metadata.metadataURI = metadataURIValue;
+          }
+          if (nftTokenURIValue && typeof nftTokenURIValue === 'string') {
+            metadata.nftTokenURI = nftTokenURIValue;
+          }
+          if (metadataHashValue && typeof metadataHashValue === 'string') {
+            metadata.metadataHash = metadataHashValue as `0x${string}`;
+          }
+          if (nftMetadataHashValue && typeof nftMetadataHashValue === 'string') {
+            metadata.nftMetadataHash = nftMetadataHashValue as `0x${string}`;
+          }
+          if (regDateStr && (typeof regDateStr === 'string' || typeof regDateStr === 'number')) {
+            metadata.registrationDate = BigInt(regDateStr);
+          }
+          
+          // Try to fetch IP metadata from the URI
+          if (metadata.metadataURI) {
+            try {
+              const ipfsUrl = metadata.metadataURI.replace('ipfs://', 'https://ipfs.io/ipfs/');
+              const response = await fetch(ipfsUrl);
+              if (response.ok) {
+                metadata.ipMetadataDetails = await response.json();
+              }
+            } catch (err) {
+              console.error('Error fetching IP metadata from URI:', err);
+            }
+          }
+          
+          // Try to fetch NFT metadata from the URI
+          if (metadata.nftTokenURI) {
+            try {
+              const ipfsUrl = metadata.nftTokenURI.replace('ipfs://', 'https://ipfs.io/ipfs/');
+              const response = await fetch(ipfsUrl);
+              if (response.ok) {
+                metadata.nftMetadataDetails = await response.json();
+              }
+            } catch (err) {
+              console.error('Error fetching NFT metadata from URI:', err);
+            }
+          }
+        }
+        
+        setLicenses(prev => prev.map(l => 
+          l.id === licenseId ? { 
+            ...l, 
+            metadata, 
+            metadataLoading: false, 
+            showMetadata: true 
+          } : l
+        ));
+
+        toast({
+          title: "Metadata Loaded",
+          description: "Successfully fetched IP metadata",
+        });
+      } catch (error: any) {
+        console.error('Error fetching metadata:', error);
+        setLicenses(prev => prev.map(l => 
+          l.id === licenseId ? { ...l, metadataLoading: false } : l
+        ));
+        
+        toast({
+          title: "Error",
+          description: "Failed to load metadata",
+          variant: "destructive",
+        });
+      }
+    } else {
+      // Metadata already loaded, just show it
+      setLicenses(prev => prev.map(l => 
+        l.id === licenseId ? { ...l, showMetadata: true } : l
+      ));
     }
   };
 
@@ -268,7 +406,6 @@ const Licenses = () => {
             </p>
           </div>
 
-          {/* Licenses List */}
           {licenses.length === 0 ? (
             <div className="text-center py-24">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
@@ -361,6 +498,123 @@ const Licenses = () => {
                         </div>
                       )}
                     </div>
+
+                    {/* Metadata Toggle Button */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full border-primary/30 text-primary text-xs h-8"
+                      onClick={() => toggleMetadata(license.id)}
+                      disabled={license.metadataLoading}
+                    >
+                      {license.metadataLoading ? (
+                        <>
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          Loading Metadata...
+                        </>
+                      ) : (
+                        <>
+                          <Info className="h-3 w-3 mr-1" />
+                          {license.showMetadata ? 'Hide' : 'Show'} IP Metadata
+                          {license.showMetadata ? (
+                            <ChevronUp className="h-3 w-3 ml-1" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 ml-1" />
+                          )}
+                        </>
+                      )}
+                    </Button>
+
+                    {/* Metadata Display */}
+                    {license.showMetadata && license.metadata && (
+                      <div className="space-y-3 pt-3 border-t border-border">
+                        <div className="text-xs font-semibold text-primary flex items-center gap-1">
+                          <Info className="h-3 w-3" />
+                          IP Metadata Details
+                        </div>
+
+                        {/* IP Description */}
+                        {license.metadata.ipMetadataDetails?.description && (
+                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                            <div className="text-xs text-muted-foreground mb-1">Description</div>
+                            <div className="text-xs">{license.metadata.ipMetadataDetails.description}</div>
+                          </div>
+                        )}
+
+                        {/* IP Image */}
+                        {license.metadata.ipMetadataDetails?.image && (
+                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                            <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                              <ImageIcon className="h-3 w-3" />
+                              Image
+                            </div>
+                            <img 
+                              src={license.metadata.ipMetadataDetails.image.replace('ipfs://', 'https://ipfs.io/ipfs/')} 
+                              alt="IP Asset"
+                              className="w-full h-32 object-cover rounded"
+                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Owner */}
+                        {license.metadata.owner && (
+                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              Owner
+                            </div>
+                            <div className="text-xs font-mono break-all">{license.metadata.owner}</div>
+                          </div>
+                        )}
+
+                        {/* Registration Date */}
+                        {license.metadata.registrationDate && (
+                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              Registered
+                            </div>
+                            <div className="text-xs">
+                              {(() => {
+                                try {
+                                  const timestamp = typeof license.metadata.registrationDate === 'bigint' 
+                                    ? Number(license.metadata.registrationDate) 
+                                    : license.metadata.registrationDate;
+                                  const date = new Date(timestamp * 1000);
+                                  return date.toLocaleString();
+                                } catch (e) {
+                                  return 'N/A';
+                                }
+                              })()}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Creators */}
+                        {license.metadata.ipMetadataDetails?.creators && license.metadata.ipMetadataDetails.creators.length > 0 && (
+                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                            <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              Creators
+                            </div>
+                            {license.metadata.ipMetadataDetails.creators.map((creator, idx) => (
+                              <div key={idx} className="text-xs mb-1">
+                                <div className="flex justify-between items-center">
+                                  <span className="font-medium">{creator.name}</span>
+                                  <span className="text-muted-foreground">{creator.contributionPercent}%</span>
+                                </div>
+                                {creator.address && (
+                                  <div className="font-mono text-muted-foreground text-[10px] mt-0.5">
+                                    {creator.address}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     
                     <div className="flex gap-2 pt-2">
                       {license.story_explorer_tx_url && (
