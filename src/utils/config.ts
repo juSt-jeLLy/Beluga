@@ -8,6 +8,8 @@ export const STORY_NETWORK = 'aeneid';
 
 export const networkInfo = {
   rpcProviderUrl: 'https://aeneid.storyrpc.io',
+  blockExplorer: 'https://aeneid.storyscan.io',
+  protocolExplorer: 'https://aeneid.explorer.story.foundation',
   chain: aeneid,
 };
 
