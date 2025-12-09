@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import Navbar from "@/components/Navbar";
+import DerivativeIPRegistrationDialog from "@/components/DerivativeIPRegistrationDialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,12 +26,14 @@ import {
   Image as ImageIcon,
   User,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  GitBranch
 } from "lucide-react";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { LicenseRecord } from "@/services/supabaseService";
 import { getEnrichedMetadata, type EnrichedIPMetadata } from "@/utils/coreMetadataViewService";
 import { createClient } from '@supabase/supabase-js';
+import { SensorData } from "@/services/gmailService";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -39,6 +42,10 @@ interface LicenseWithDataset extends LicenseRecord {
   dataset_title?: string;
   dataset_type?: string;
   dataset_location?: string;
+  dataset_data?: string;
+  dataset_timestamp?: string;
+  dataset_sensor_health?: string;
+  dataset_image_hash?: string;
   icon?: React.ReactNode;
   gradient?: string;
   metadata?: EnrichedIPMetadata;
@@ -113,6 +120,10 @@ const Licenses = () => {
   const [licenses, setLicenses] = useState<LicenseWithDataset[]>([]);
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
   const [supabaseClient] = useState(() => createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
+  
+  // Derivative registration dialog state
+  const [derivativeDialogOpen, setDerivativeDialogOpen] = useState(false);
+  const [selectedLicenseForDerivative, setSelectedLicenseForDerivative] = useState<LicenseWithDataset | null>(null);
 
   useEffect(() => {
     if (isConnected && address) {
@@ -169,6 +180,10 @@ const Licenses = () => {
             dataset_title: sensorData?.title || 'Unknown Dataset',
             dataset_type: sensorData?.type || 'Unknown',
             dataset_location: sensorData?.location || undefined,
+            dataset_data: sensorData?.data || undefined,
+            dataset_timestamp: sensorData?.timestamp || undefined,
+            dataset_sensor_health: sensorData?.sensor_health || undefined,
+            dataset_image_hash: sensorData?.image_hash || undefined,
             icon: getIconForType(sensorData?.type),
             gradient: getGradientForType(sensorData?.type),
             showMetadata: false,
@@ -205,11 +220,8 @@ const Licenses = () => {
     if (!jsonString) return null;
     
     try {
-      // Remove the data:application/json;base64, prefix
       const base64Data = jsonString.replace('data:application/json;base64,', '');
-      // Decode base64
       const decodedString = atob(base64Data);
-      // Parse JSON
       return JSON.parse(decodedString);
     } catch (error) {
       console.error('Error decoding jsonString:', error);
@@ -221,7 +233,6 @@ const Licenses = () => {
     const license = licenses.find(l => l.id === licenseId);
     if (!license) return;
 
-    // Toggle visibility
     if (license.showMetadata) {
       setLicenses(prev => prev.map(l => 
         l.id === licenseId ? { ...l, showMetadata: false } : l
@@ -229,7 +240,6 @@ const Licenses = () => {
       return;
     }
 
-    // If metadata not loaded yet, fetch it
     if (!license.metadata && !license.metadataLoading) {
       setLicenses(prev => prev.map(l => 
         l.id === licenseId ? { ...l, metadataLoading: true } : l
@@ -239,11 +249,9 @@ const Licenses = () => {
         const metadata = await getEnrichedMetadata(license.ip_asset_id as `0x${string}`);
         console.log('Fetched metadata for', license.ip_asset_id, metadata);
         
-        // Decode the jsonString if available
         const decodedJson = decodeJsonString(metadata.jsonString);
         console.log('Decoded JSON:', decodedJson);
         
-        // Enhance metadata with decoded data
         if (decodedJson) {
           const attributes = decodedJson.attributes || [];
           const attributesMap = new Map(
@@ -276,7 +284,6 @@ const Licenses = () => {
             metadata.registrationDate = BigInt(regDateStr);
           }
           
-          // Try to fetch IP metadata from the URI
           if (metadata.metadataURI) {
             try {
               const ipfsUrl = metadata.metadataURI.replace('ipfs://', 'https://ipfs.io/ipfs/');
@@ -289,7 +296,6 @@ const Licenses = () => {
             }
           }
           
-          // Try to fetch NFT metadata from the URI
           if (metadata.nftTokenURI) {
             try {
               const ipfsUrl = metadata.nftTokenURI.replace('ipfs://', 'https://ipfs.io/ipfs/');
@@ -329,11 +335,49 @@ const Licenses = () => {
         });
       }
     } else {
-      // Metadata already loaded, just show it
       setLicenses(prev => prev.map(l => 
         l.id === licenseId ? { ...l, showMetadata: true } : l
       ));
     }
+  };
+
+  const handleOpenDerivativeDialog = (license: LicenseWithDataset) => {
+    // Check if we have all required sensor data
+    if (!license.dataset_data || !license.dataset_timestamp) {
+      toast({
+        title: "Missing Data",
+        description: "This license doesn't have complete sensor data for derivative registration",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedLicenseForDerivative(license);
+    setDerivativeDialogOpen(true);
+  };
+
+  const handleDerivativeRegistrationComplete = () => {
+    toast({
+      title: "Derivative Created! 🎉",
+      description: "Your derivative IP has been successfully registered",
+    });
+    // Optionally refresh licenses
+    fetchUserLicenses();
+  };
+
+  const convertLicenseToSensorData = (license: LicenseWithDataset): SensorData | null => {
+    if (!license.dataset_data || !license.dataset_timestamp || !license.dataset_type || !license.dataset_title) {
+      return null;
+    }
+
+    return {
+      type: license.dataset_type,
+      title: license.dataset_title,
+      data: license.dataset_data,
+      timestamp: license.dataset_timestamp,
+      sensorHealth: license.dataset_sensor_health || 'Unknown',
+      imageHash: license.dataset_image_hash || '',
+    };
   };
 
   if (!isConnected) {
@@ -386,6 +430,19 @@ const Licenses = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
+      
+      {/* Derivative Registration Dialog */}
+      {selectedLicenseForDerivative && (
+        <DerivativeIPRegistrationDialog
+          open={derivativeDialogOpen}
+          onOpenChange={setDerivativeDialogOpen}
+          sensorData={convertLicenseToSensorData(selectedLicenseForDerivative)}
+          location={selectedLicenseForDerivative.dataset_location || 'Unknown Location'}
+          sensorDataId={selectedLicenseForDerivative.sensor_data_id}
+          supabaseService={supabaseService}
+          onRegistrationComplete={handleDerivativeRegistrationComplete}
+        />
+      )}
       
       <div className="relative pt-24 pb-12 overflow-hidden">
         <div className="absolute inset-0 z-0 bg-gradient-to-b from-background/80 via-background to-background"></div>
@@ -499,6 +556,17 @@ const Licenses = () => {
                       )}
                     </div>
 
+                    {/* Create Derivative Button */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full border-indigo-500/50 text-indigo-600 hover:bg-indigo-500/10 text-xs h-9"
+                      onClick={() => handleOpenDerivativeDialog(license)}
+                    >
+                      <GitBranch className="h-3 w-3 mr-1" />
+                      Create Derivative IP
+                    </Button>
+
                     {/* Metadata Toggle Button */}
                     <Button
                       variant="outline"
@@ -533,7 +601,6 @@ const Licenses = () => {
                           IP Metadata Details
                         </div>
 
-                        {/* IP Description */}
                         {license.metadata.ipMetadataDetails?.description && (
                           <div className="bg-primary/5 p-2 rounded border border-primary/20">
                             <div className="text-xs text-muted-foreground mb-1">Description</div>
@@ -541,7 +608,6 @@ const Licenses = () => {
                           </div>
                         )}
 
-                        {/* IP Image */}
                         {license.metadata.ipMetadataDetails?.image && (
                           <div className="bg-primary/5 p-2 rounded border border-primary/20">
                             <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
@@ -557,7 +623,6 @@ const Licenses = () => {
                           </div>
                         )}
 
-                        {/* Owner */}
                         {license.metadata.owner && (
                           <div className="bg-primary/5 p-2 rounded border border-primary/20">
                             <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
@@ -568,7 +633,6 @@ const Licenses = () => {
                           </div>
                         )}
 
-                        {/* Registration Date */}
                         {license.metadata.registrationDate && (
                           <div className="bg-primary/5 p-2 rounded border border-primary/20">
                             <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
@@ -591,7 +655,6 @@ const Licenses = () => {
                           </div>
                         )}
 
-                        {/* Creators */}
                         {license.metadata.ipMetadataDetails?.creators && license.metadata.ipMetadataDetails.creators.length > 0 && (
                           <div className="bg-primary/5 p-2 rounded border border-primary/20">
                             <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
