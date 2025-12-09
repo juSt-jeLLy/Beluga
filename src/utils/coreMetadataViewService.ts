@@ -1,90 +1,9 @@
-// src/services/metadataFetchService.ts
 import { Address, createPublicClient, http } from 'viem';
 import { aeneid } from '@story-protocol/core-sdk';
+import { CORE_METADATA_VIEW_MODULE_ABI } from '../abis/CoreMetadataViewModuleABI';
 
 // CoreMetadataViewModule contract address
 const CORE_METADATA_VIEW_MODULE_ADDRESS: Address = '0xB3F88038A983CeA5753E11D144228Ebb5eACdE20';
-
-// CoreMetadataViewModule ABI
-const CORE_METADATA_VIEW_MODULE_ABI = [
-  {
-    inputs: [{ internalType: 'address', name: 'ipId', type: 'address' }],
-    name: 'getCoreMetadata',
-    outputs: [
-      {
-        components: [
-          { internalType: 'string', name: 'nftTokenURI', type: 'string' },
-          { internalType: 'bytes32', name: 'nftMetadataHash', type: 'bytes32' },
-          { internalType: 'string', name: 'metadataURI', type: 'string' },
-          { internalType: 'bytes32', name: 'metadataHash', type: 'bytes32' },
-          { internalType: 'uint256', name: 'registrationDate', type: 'uint256' },
-          { internalType: 'address', name: 'owner', type: 'address' },
-        ],
-        internalType: 'struct ICoreMetadataViewModule.CoreMetadata',
-        name: '',
-        type: 'tuple',
-      },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'address', name: 'ipId', type: 'address' }],
-    name: 'getMetadataURI',
-    outputs: [{ internalType: 'string', name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'address', name: 'ipId', type: 'address' }],
-    name: 'getMetadataHash',
-    outputs: [{ internalType: 'bytes32', name: '', type: 'bytes32' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'address', name: 'ipId', type: 'address' }],
-    name: 'getRegistrationDate',
-    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'address', name: 'ipId', type: 'address' }],
-    name: 'getNftTokenURI',
-    outputs: [{ internalType: 'string', name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'address', name: 'ipId', type: 'address' }],
-    name: 'getNftMetadataHash',
-    outputs: [{ internalType: 'bytes32', name: '', type: 'bytes32' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'address', name: 'ipId', type: 'address' }],
-    name: 'getOwner',
-    outputs: [{ internalType: 'address', name: '', type: 'address' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'address', name: 'ipId', type: 'address' }],
-    name: 'getJsonString',
-    outputs: [{ internalType: 'string', name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ internalType: 'address', name: 'ipAccount', type: 'address' }],
-    name: 'isSupported',
-    outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
 
 // Type definitions
 export interface CoreMetadata {
