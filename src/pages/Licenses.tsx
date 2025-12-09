@@ -27,7 +27,9 @@ import {
   User,
   ChevronDown,
   ChevronUp,
-  GitBranch
+  GitBranch,
+  FileText,
+  Shield
 } from "lucide-react";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { LicenseRecord } from "@/services/supabaseService";
@@ -342,10 +344,20 @@ const Licenses = () => {
   };
 
   const handleOpenDerivativeDialog = (license: LicenseWithDataset) => {
-    // Check if we have all required sensor data
+    // Check if we have all required license data
+    if (!license.ip_asset_id || !license.license_terms_id) {
+      toast({
+        title: "Missing License Data",
+        description: "This license doesn't have complete IP data for derivative registration",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if we have sensor data
     if (!license.dataset_data || !license.dataset_timestamp) {
       toast({
-        title: "Missing Data",
+        title: "Missing Sensor Data",
         description: "This license doesn't have complete sensor data for derivative registration",
         variant: "destructive",
       });
@@ -441,6 +453,9 @@ const Licenses = () => {
           sensorDataId={selectedLicenseForDerivative.sensor_data_id}
           supabaseService={supabaseService}
           onRegistrationComplete={handleDerivativeRegistrationComplete}
+          // Pass license data
+          parentIpAssetId={selectedLicenseForDerivative.ip_asset_id}
+          licenseTermsId={selectedLicenseForDerivative.license_terms_id}
         />
       )}
       
@@ -539,10 +554,42 @@ const Licenses = () => {
                     )}
                     
                     <div className="pt-2 border-t border-border space-y-2">
+                      {/* IP Asset ID */}
                       <div className="flex items-center gap-2 text-xs">
-                        <Hash className="h-3 w-3 text-muted-foreground" />
+                        <Shield className="h-3 w-3 text-muted-foreground" />
                         <span className="text-muted-foreground">IP:</span>
                         <span className="font-mono text-primary">{license.ip_asset_id.slice(0, 10)}...</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank');
+                          }}
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      
+                      {/* License Terms ID */}
+                      <div className="flex items-center gap-2 text-xs">
+                        <FileText className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">License:</span>
+                        <span className="font-mono text-foreground">
+                          {license.license_terms_id.slice(0, 10)}...
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`https://aeneid.explorer.story.foundation/license-terms/${license.license_terms_id}`, '_blank');
+                          }}
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
                       </div>
                       
                       {license.license_token_ids && license.license_token_ids.length > 0 && (

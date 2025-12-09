@@ -1,5 +1,4 @@
-// DerivativeIPRegistrationDialog.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useDerivativeIPRegistration } from '@/utils/derivativeRegistrationService';
 import { SensorData } from '@/services/gmailService';
-import { Loader2, CheckCircle, XCircle, ExternalLink, Sparkles, Upload, FileCheck, Coins, Shield, Zap, Info, GitBranch } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, ExternalLink, Sparkles, Upload, FileCheck, Coins, Shield, Zap, Info, GitBranch, FileText } from 'lucide-react';
 import { networkInfo } from '@/utils/config';
 import { SupabaseService } from '@/services/supabaseService';
 import { Address } from 'viem';
@@ -20,7 +19,181 @@ interface DerivativeIPRegistrationDialogProps {
   sensorDataId?: number;
   supabaseService?: SupabaseService;
   onRegistrationComplete?: () => void;
+  parentIpAssetId?: string;    // Auto-fill from license
+  licenseTermsId?: string;     // Auto-fill from license
 }
+
+interface DerivativeSuccessDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  ipId: string;
+  txHash: string;
+  storyExplorerUrl?: string;
+  parentIpId?: string;
+  datasetTitle: string;
+  creatorName: string;
+  sensorDataId?: number;
+}
+
+const DerivativeSuccessDialog = ({
+  open,
+  onOpenChange,
+  ipId,
+  txHash,
+  storyExplorerUrl,
+  parentIpId,
+  datasetTitle,
+  creatorName,
+  sensorDataId,
+}: DerivativeSuccessDialogProps) => {
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[900px] border-2 border-green-500/20 bg-gradient-to-br from-background via-background to-green-500/5 p-8">
+        <div className="flex gap-8">
+          {/* Left Column - Status Icon & Message */}
+          <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+            <div className="relative">
+              <div className="absolute inset-0 bg-green-500 rounded-full blur-2xl opacity-30 animate-pulse"></div>
+              <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center animate-bounce">
+                <CheckCircle className="h-16 w-16 text-white" />
+              </div>
+            </div>
+            
+            <div className="text-center">
+              <h3 className="text-3xl font-bold text-green-600 mb-2">
+                Derivative Created! 🎉
+              </h3>
+              <p className="text-muted-foreground">
+                Your derivative IP has been successfully registered
+              </p>
+            </div>
+          </div>
+
+          {/* Right Column - Details & Actions */}
+          <div className="flex-1 space-y-6">
+            <div>
+              <h4 className="text-lg font-semibold mb-4">Registration Details</h4>
+              
+              <div className="space-y-4">
+                {/* Derivative IP ID */}
+                <div>
+                  <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
+                    <Shield className="h-3 w-3" />
+                    DERIVATIVE IP ID
+                  </div>
+                  <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
+                    {ipId}
+                  </div>
+                </div>
+
+                {/* Parent IP ID */}
+                {parentIpId && (
+                  <div>
+                    <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
+                      <GitBranch className="h-3 w-3" />
+                      PARENT IP ID
+                    </div>
+                    <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
+                      {parentIpId}
+                    </div>
+                  </div>
+                )}
+
+                {/* Dataset Info */}
+                <div>
+                  <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
+                    <FileText className="h-3 w-3" />
+                    DATASET
+                  </div>
+                  <div className="bg-background/50 p-3 rounded-lg border border-border space-y-2">
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Title: </span>
+                      <span className="font-semibold">{datasetTitle}</span>
+                    </div>
+                    <div className="text-xs">
+                      <span className="text-muted-foreground">Creator: </span>
+                      <span className="font-medium text-primary">{creatorName}</span>
+                    </div>
+                    {sensorDataId && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Dataset ID: </span>
+                        <span className="font-mono text-primary">#{sensorDataId}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Transaction Hash */}
+                <div>
+                  <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
+                    <Zap className="h-3 w-3" />
+                    TRANSACTION HASH
+                  </div>
+                  <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
+                    {txHash}
+                  </div>
+                </div>
+
+                {/* Success Status */}
+                <div>
+                  <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
+                    <CheckCircle className="h-3 w-3" />
+                    STATUS
+                  </div>
+                  <div className="text-sm p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-600">
+                    ✓ Derivative IP registered on blockchain
+                    {sensorDataId && (
+                      <div className="mt-1 text-xs">
+                        ✓ Saved to database (ID: #{sensorDataId})
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* View on Story Explorer Button */}
+                {storyExplorerUrl && (
+                  <a
+                    href={storyExplorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 p-4 rounded-xl bg-gradient-to-r from-primary to-secondary text-white hover:opacity-90 transition-opacity font-semibold shadow-lg"
+                  >
+                    <ExternalLink className="h-5 w-5" />
+                    View on Story Explorer
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  // Open the new derivative IP in explorer
+                  if (ipId) {
+                    window.open(`https://aeneid.explorer.story.foundation/ipa/${ipId}`, '_blank');
+                  }
+                }}
+                className="flex-1 border-primary/30"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                View IP
+              </Button>
+              <Button 
+                onClick={() => onOpenChange(false)}
+                className="flex-1 bg-gradient-to-r from-primary to-secondary hover:opacity-90 font-semibold shadow-lg"
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 const ProcessingDialog = ({ 
   open, 
@@ -175,26 +348,38 @@ export default function DerivativeIPRegistrationDialog({
   location,
   sensorDataId,
   supabaseService,
-  onRegistrationComplete
+  onRegistrationComplete,
+  parentIpAssetId,
+  licenseTermsId
 }: DerivativeIPRegistrationDialogProps) {
   const [creatorName, setCreatorName] = useState('');
-  const [parentIpId, setParentIpId] = useState('');
-  const [licenseTermsId, setLicenseTermsId] = useState('');
   const [royaltyRecipient, setRoyaltyRecipient] = useState('');
   const [royaltyPercentage, setRoyaltyPercentage] = useState('10');
   const [isRegistering, setIsRegistering] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
-  const [registrationResult, setRegistrationResult] = useState<{
-    success: boolean;
+  
+  // Success dialog state
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [successData, setSuccessData] = useState<{
     ipId?: string;
     txHash?: string;
     storyExplorerUrl?: string;
     parentIpId?: string;
-    error?: string;
+    datasetTitle?: string;
+    creatorName?: string;
   } | null>(null);
   
   const { toast } = useToast();
   const { registerDerivativeIP, isConnected } = useDerivativeIPRegistration(supabaseService);
+
+  useEffect(() => {
+    if (open && parentIpAssetId && licenseTermsId) {
+      toast({
+        title: "License Data Loaded",
+        description: "Parent IP and License Terms auto-filled from your license",
+      });
+    }
+  }, [open, parentIpAssetId, licenseTermsId]);
 
   const handleRegister = async () => {
     if (!sensorData) return;
@@ -209,19 +394,19 @@ export default function DerivativeIPRegistrationDialog({
       return;
     }
 
-    if (!parentIpId.trim()) {
+    if (!parentIpAssetId) {
       toast({
         title: 'Parent IP ID Required',
-        description: 'Please enter the parent IP Asset ID',
+        description: 'Parent IP Asset ID is required',
         variant: 'destructive',
       });
       return;
     }
 
-    if (!licenseTermsId.trim()) {
+    if (!licenseTermsId) {
       toast({
         title: 'License Terms ID Required',
-        description: 'Please enter the license terms ID',
+        description: 'License terms ID is required',
         variant: 'destructive',
       });
       return;
@@ -256,7 +441,6 @@ export default function DerivativeIPRegistrationDialog({
     }
 
     setIsRegistering(true);
-    setRegistrationResult(null);
     setProcessingStep(0);
 
     try {
@@ -272,20 +456,27 @@ export default function DerivativeIPRegistrationDialog({
         sensorData,
         location,
         creatorName.trim(),
-        parentIpId.trim() as Address,
-        BigInt(licenseTermsId.trim()),
+        parentIpAssetId as Address,
+        BigInt(licenseTermsId),
         royaltyRecipient.trim() ? royaltyRecipient.trim() as Address : undefined,
         percentageNum,
         sensorDataId
       );
 
-      setRegistrationResult(result);
-
       if (result.success) {
-        toast({
-          title: 'Derivative IP Registered Successfully! 🎉',
-          description: `IP ID: ${result.ipId?.slice(0, 10)}...`,
+        // Set success data with all necessary information
+        setSuccessData({
+          ipId: result.ipId,
+          txHash: result.txHash,
+          storyExplorerUrl: result.storyExplorerUrl,
+          parentIpId: parentIpAssetId,
+          datasetTitle: sensorData.title,
+          creatorName: creatorName,
         });
+        
+        // Close main dialog and show success dialog
+        onOpenChange(false);
+        setShowSuccessDialog(true);
         
         if (onRegistrationComplete) {
           onRegistrationComplete();
@@ -299,10 +490,6 @@ export default function DerivativeIPRegistrationDialog({
       }
     } catch (error: any) {
       console.error('Registration error:', error);
-      setRegistrationResult({
-        success: false,
-        error: error.message || 'Failed to register derivative IP'
-      });
       toast({
         title: 'Registration Error',
         description: error.message || 'Failed to register derivative IP',
@@ -317,11 +504,9 @@ export default function DerivativeIPRegistrationDialog({
   const handleClose = () => {
     if (!isRegistering) {
       setCreatorName('');
-      setParentIpId('');
-      setLicenseTermsId('');
       setRoyaltyRecipient('');
       setRoyaltyPercentage('10');
-      setRegistrationResult(null);
+      setSuccessData(null);
       setProcessingStep(0);
       onOpenChange(false);
     }
@@ -330,13 +515,36 @@ export default function DerivativeIPRegistrationDialog({
   return (
     <>
       <ProcessingDialog open={isRegistering} currentStep={processingStep} />
+      
+      {/* Success Dialog - Always render but control visibility with open prop */}
+      <DerivativeSuccessDialog
+        open={showSuccessDialog}
+        onOpenChange={(open) => {
+          setShowSuccessDialog(open);
+          if (!open) {
+            // Reset state when success dialog closes
+            setCreatorName('');
+            setRoyaltyRecipient('');
+            setRoyaltyPercentage('10');
+            setSuccessData(null);
+          }
+        }}
+        ipId={successData?.ipId || ''}
+        txHash={successData?.txHash || ''}
+        storyExplorerUrl={successData?.storyExplorerUrl}
+        parentIpId={successData?.parentIpId}
+        datasetTitle={successData?.datasetTitle || 'Unknown Dataset'}
+        creatorName={successData?.creatorName || 'Unknown Creator'}
+        sensorDataId={sensorDataId}
+      />
 
-      <Dialog open={open && !isRegistering} onOpenChange={handleClose}>
-        <DialogContent className="max-w-[900px] border-2 border-primary/20 bg-gradient-to-br from-background via-background to-primary/5 p-8">
-          
-          {!registrationResult ? (
+      {/* Main Registration Dialog - Show when not registering */}
+      {!isRegistering && (
+        <Dialog open={open} onOpenChange={handleClose}>
+          <DialogContent className="max-w-[900px] border-2 border-primary/20 bg-gradient-to-br from-background via-background to-primary/5 p-8">
+            
             <div className="flex gap-8">
-              {/* Left Column - Sensor Info & Basic Inputs */}
+              {/* Left Column - Sensor Info & License Details */}
               <div className="flex-1 space-y-6">
                 <div>
                   <DialogHeader className="space-y-3 mb-6">
@@ -349,7 +557,7 @@ export default function DerivativeIPRegistrationDialog({
                       </span>
                     </DialogTitle>
                     <DialogDescription className="text-sm">
-                      Create a derivative work based on an existing IP Asset
+                      Create a derivative work based on your licensed IP Asset
                     </DialogDescription>
                   </DialogHeader>
 
@@ -379,69 +587,63 @@ export default function DerivativeIPRegistrationDialog({
                     </div>
                   </div>
 
-                  {/* Creator Name Input */}
-                  <div className="space-y-2">
-                    <Label htmlFor="creator-name" className="text-sm font-semibold flex items-center gap-2">
-                      Creator Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="creator-name"
-                      placeholder="Enter your full name"
-                      value={creatorName}
-                      onChange={(e) => setCreatorName(e.target.value)}
-                      className="h-11 border-2 border-primary/20 focus:border-primary"
-                    />
+                  {/* License Details - Simple Display */}
+                  <div className="space-y-4">
+                    {/* Parent IP Asset */}
+                    {parentIpAssetId && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-primary flex items-center gap-2">
+                          <Shield className="h-3 w-3" />
+                          Parent IP Asset
+                        </div>
+                        <div className="font-mono text-xs bg-background/50 p-2 rounded border border-primary/20 break-all">
+                          {parentIpAssetId}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* License Terms */}
+                    {licenseTermsId && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-primary flex items-center gap-2">
+                          <FileText className="h-3 w-3" />
+                          License Terms
+                        </div>
+                        <div className="space-y-1">
+                          <div className="font-mono text-sm font-semibold bg-background/50 p-2 rounded border border-primary/20">
+                            ID: {licenseTermsId}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Terms from your license agreement
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Creator Name Input */}
+                    <div className="space-y-2">
+                      <Label htmlFor="creator-name" className="text-sm font-semibold flex items-center gap-2">
+                        Creator Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="creator-name"
+                        placeholder="Enter your full name"
+                        value={creatorName}
+                        onChange={(e) => setCreatorName(e.target.value)}
+                        className="h-11 border-2 border-primary/20 focus:border-primary"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right Column - Parent IP & Royalty Configuration */}
+              {/* Right Column - Royalty Configuration */}
               <div className="flex-1 space-y-6">
-                {/* Parent IP Configuration */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-primary">
-                    <GitBranch className="h-4 w-4" />
-                    Parent IP Details
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="parent-ip-id" className="text-xs font-semibold flex items-center gap-2">
-                      Parent IP Asset ID <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="parent-ip-id"
-                      placeholder="0x..."
-                      value={parentIpId}
-                      onChange={(e) => setParentIpId(e.target.value)}
-                      className="h-11 border-2 border-primary/20 focus:border-primary font-mono text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The IP Asset you're creating a derivative from
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="license-terms-id" className="text-xs font-semibold flex items-center gap-2">
-                      License Terms ID <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="license-terms-id"
-                      placeholder="e.g., 1"
-                      value={licenseTermsId}
-                      onChange={(e) => setLicenseTermsId(e.target.value)}
-                      className="h-11 border-2 border-primary/20 focus:border-primary"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      License terms to use from parent IP
-                    </p>
-                  </div>
-                </div>
-
                 {/* Royalty Configuration */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-primary">
                     <Coins className="h-4 w-4" />
-                    Royalty Distribution
+                    Royalty Configuration
                   </div>
                   
                   <div className="space-y-2">
@@ -506,7 +708,7 @@ export default function DerivativeIPRegistrationDialog({
                     </Button>
                     <Button 
                       onClick={handleRegister}
-                      disabled={isRegistering || !isConnected || !sensorDataId}
+                      disabled={isRegistering || !isConnected || !sensorDataId || !parentIpAssetId || !licenseTermsId}
                       className="flex-1 bg-gradient-to-r from-primary to-secondary hover:opacity-90 font-semibold shadow-lg h-11"
                     >
                       {isRegistering ? (
@@ -525,125 +727,9 @@ export default function DerivativeIPRegistrationDialog({
                 </DialogFooter>
               </div>
             </div>
-          ) : (
-            /* Success/Failure State */
-            <div className="flex gap-8">
-              {/* Left Column - Status Icon & Message */}
-              <div className="flex-1 flex flex-col items-center justify-center space-y-6">
-                {registrationResult.success ? (
-                  <>
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-green-500 rounded-full blur-2xl opacity-30 animate-pulse"></div>
-                      <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center animate-bounce">
-                        <CheckCircle className="h-16 w-16 text-white" />
-                      </div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <h3 className="text-3xl font-bold text-green-600 mb-2">
-                        Success! 🎉
-                      </h3>
-                      <p className="text-muted-foreground">
-                        Your derivative IP is now registered
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-32 h-32 rounded-full bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-                      <XCircle className="h-16 w-16 text-white" />
-                    </div>
-                    
-                    <div className="text-center">
-                      <h3 className="text-3xl font-bold text-red-600 mb-2">
-                        Registration Failed
-                      </h3>
-                      <p className="text-muted-foreground">
-                        Something went wrong
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Right Column - Details & Actions */}
-              <div className="flex-1 space-y-6">
-                <div>
-                  <h4 className="text-lg font-semibold mb-4">
-                    {registrationResult.success ? 'Registration Details' : 'Error Details'}
-                  </h4>
-                  
-                  {registrationResult.success ? (
-                    <div className="space-y-4">
-                      <div>
-                        <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
-                          <Shield className="h-3 w-3" />
-                          DERIVATIVE IP ID
-                        </div>
-                        <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
-                          {registrationResult.ipId}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
-                          <GitBranch className="h-3 w-3" />
-                          PARENT IP ID
-                        </div>
-                        <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
-                          {registrationResult.parentIpId}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
-                          <Zap className="h-3 w-3" />
-                          STORY EXPLORER URL
-                        </div>
-                        <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
-                          {registrationResult.storyExplorerUrl}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
-                          <CheckCircle className="h-3 w-3" />
-                          DATABASE STATUS
-                        </div>
-                        <div className="text-sm p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-600">
-                          ✓ Saved to database (ID: #{sensorDataId})
-                        </div>
-                      </div>
-                      
-                      {registrationResult.storyExplorerUrl && (
-                        <a
-                          href={registrationResult.storyExplorerUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-2 p-4 rounded-xl bg-gradient-to-r from-primary to-secondary text-white hover:opacity-90 transition-opacity font-semibold shadow-lg"
-                        >
-                          <ExternalLink className="h-5 w-5" />
-                          View on Story Explorer
-                        </a>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="p-5 rounded-xl bg-red-500/10 border-2 border-red-500/30">
-                      <p className="text-sm text-red-600 dark:text-red-400">
-                        {registrationResult.error}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <Button 
-                  onClick={handleClose}
-                  className="w-full bg-gradient-to-r from-primary to-secondary hover:opacity-90 font-semibold shadow-lg h-12"
-                >
-                  {registrationResult.success ? 'View Dashboard' : 'Close'}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }
