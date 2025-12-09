@@ -1,6 +1,6 @@
 // derivativeRegistrationService.ts
-import { IpMetadata, PILFlavor } from '@story-protocol/core-sdk';
-import { parseEther, Address, Hex } from 'viem';
+import { IpMetadata } from '@story-protocol/core-sdk';
+import { Address } from 'viem';
 import { useWalletClient, useAccount } from 'wagmi';
 import { SensorData } from '@/services/gmailService';
 import { createStoryClient, SPGNFTContractAddress, networkInfo } from './config';
@@ -20,8 +20,8 @@ export interface DerivativeRegistrationParams {
   creatorAddress: Address;
   parentIpId: Address;
   parentLicenseTermsId: bigint | number;
-  royaltyRecipient?: Address; // Optional, defaults to creator
-  royaltyPercentage?: number; // 0-100
+  royaltyRecipient?: Address;
+  royaltyPercentage?: number;
 }
 
 export interface DerivativeRegistrationResult {
@@ -32,6 +32,12 @@ export interface DerivativeRegistrationResult {
   parentIpId?: string;
   error?: string;
   metadataUrl?: string;
+  nftTokenId?: string;
+  nftContractAddress?: string;
+  characterFileUrl?: string;
+  characterFileHash?: string;
+  imageUrl?: string;
+  imageHash?: string;
 }
 
 /**
@@ -127,6 +133,10 @@ export async function registerSensorDataAsDerivativeIP(
           trait_type: 'Data Source',
           value: 'Agricultural IoT Network',
         },
+        {
+          trait_type: 'Derivative Type',
+          value: 'Derivative IP Asset',
+        },
       ],
     };
     
@@ -176,6 +186,12 @@ export async function registerSensorDataAsDerivativeIP(
       storyExplorerUrl: storyExplorerUrl,
       parentIpId: parentIpId,
       metadataUrl: `https://ipfs.io/ipfs/${ipIpfsHash}`,
+      nftTokenId: response.tokenId?.toString(),
+      nftContractAddress: SPGNFTContractAddress,
+      characterFileUrl: characterFileUrl,
+      characterFileHash: characterFileHashHex,
+      imageUrl: finalImageUrl,
+      imageHash: sensorData.imageHash,
     };
     
   } catch (error: any) {
@@ -222,17 +238,17 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
           creatorAddress: address,
           parentIpId,
           parentLicenseTermsId,
-          royaltyRecipient: royaltyRecipient || address, // Default to connected wallet
+          royaltyRecipient: royaltyRecipient || address,
           royaltyPercentage,
         },
         walletClient
       );
       
-      // 2. Save to database if successful and we have sensorDataId
+      // 2. Save to database if successful
       if (registrationResult.success && sensorDataId && supabaseService) {
         try {
-          // Save derivative registration data
-          const saveResult = await supabaseService.saveIPRegistrationData(
+          // First, update the sensor_data table with IP registration info
+          const sensorDataUpdateResult = await supabaseService.saveIPRegistrationData(
             sensorDataId,
             {
               creator_address: address,
@@ -243,14 +259,52 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
             }
           );
           
-          if (!saveResult.success) {
-            console.warn('Derivative IP registration succeeded but failed to save to database:', saveResult.error);
-          } else {
-            console.log('Derivative IP registration data saved to database successfully');
+          if (!sensorDataUpdateResult.success) {
+            console.warn('Failed to update sensor_data with IP registration:', sensorDataUpdateResult.error);
           }
+          
+          // Second, save to derivative_ip_assets table
+          const derivativeDataResult = await supabaseService.saveDerivativeIPRegistration({
+            sensor_data_id: sensorDataId,
+            derivative_ip_id: registrationResult.ipId!,
+            parent_ip_id: parentIpId,
+            license_terms_id: parentLicenseTermsId.toString(),
+            creator_name: creatorName,
+            creator_address: address,
+            royalty_recipient: royaltyRecipient || address,
+            royalty_percentage: royaltyPercentage,
+            max_minting_fee: 0, // As set in registration
+            max_revenue_share: 100, // As set in registration
+            max_rts: 100_000_000, // As set in registration
+            transaction_hash: registrationResult.txHash!,
+            story_explorer_url: registrationResult.storyExplorerUrl,
+            metadata_url: registrationResult.metadataUrl,
+            character_file_url: registrationResult.characterFileUrl,
+            character_file_hash: registrationResult.characterFileHash,
+            nft_token_id: registrationResult.nftTokenId,
+            nft_contract_address: registrationResult.nftContractAddress,
+            nft_metadata_url: registrationResult.metadataUrl, // Using same as IP metadata
+            image_url: registrationResult.imageUrl,
+            image_hash: registrationResult.imageHash,
+          });
+          
+          if (!derivativeDataResult.success) {
+            console.error('Failed to save derivative IP data to database:', derivativeDataResult.error);
+            // Note: We don't fail the whole operation if DB save fails
+            // The blockchain registration was successful
+          } else {
+            console.log('✅ Derivative IP registration data saved to database successfully');
+            console.log('Database Record ID:', derivativeDataResult.data?.id);
+          }
+          
         } catch (dbError: any) {
           console.error('Database save error:', dbError);
+          // Don't fail the operation - blockchain registration succeeded
         }
+      } else if (registrationResult.success && !sensorDataId) {
+        console.warn('⚠️ Derivative IP registered on blockchain but no sensor_data_id provided for database save');
+      } else if (registrationResult.success && !supabaseService) {
+        console.warn('⚠️ Derivative IP registered on blockchain but no supabaseService provided for database save');
       }
       
       return registrationResult;

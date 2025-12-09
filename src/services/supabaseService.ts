@@ -14,7 +14,7 @@ export interface SensorDataRecord {
   source: 'gmail' | 'blynk';
   raw_email_id?: string;
   
-  // New fields for IP registration
+  // IP registration fields
   creator_address?: string;
   ip_asset_id?: string;
   story_explorer_url?: string;
@@ -23,11 +23,76 @@ export interface SensorDataRecord {
   license_terms_ids?: string[];
   image_hash?: string;
   metadata_url?: string;
-  revenue_share?: number; // percentage (e.g., 10.00 for 10%)
+  revenue_share?: number;
   minting_fee?: number;
   
   created_at?: string;
   updated_at?: string;
+}
+
+export interface DerivativeIPRecord {
+  id?: number;
+  sensor_data_id: number;
+  derivative_ip_id: string;
+  parent_ip_id: string;
+  license_terms_id: string;
+  creator_name: string;
+  creator_address: string;
+  royalty_recipient?: string;
+  royalty_percentage?: number;
+  max_minting_fee?: number;
+  max_revenue_share?: number;
+  max_rts?: number;
+  transaction_hash: string;
+  story_explorer_url?: string;
+  metadata_url?: string;
+  character_file_url?: string;
+  character_file_hash?: string;
+  nft_token_id?: string;
+  nft_contract_address?: string;
+  nft_metadata_url?: string;
+  image_url?: string;
+  image_hash?: string;
+  registered_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DerivativeIPWithParentInfo {
+  id: number;
+  sensor_data_id: number;
+  derivative_ip_id: string;
+  parent_ip_id: string;
+  license_terms_id: string;
+  creator_name: string;
+  creator_address: string;
+  royalty_recipient?: string;
+  royalty_percentage?: number;
+  transaction_hash: string;
+  story_explorer_url?: string;
+  metadata_url?: string;
+  registered_at: string;
+  derivative_type: string;
+  derivative_title: string;
+  derivative_location?: string;
+  derivative_timestamp: string;
+  derivative_data: string;
+  parent_type?: string;
+  parent_title?: string;
+  parent_location?: string;
+  parent_ip_confirmed?: string;
+}
+
+export interface DerivativeIPStats {
+  total_derivatives: number;
+  unique_parent_ips: number;
+  unique_creators: number;
+  avg_royalty_percentage: number;
+  last_registered_at?: string;
+  parent_ip_id: string;
+  derivatives_count: number;
+  derivative_ip_ids: string[];
+  creator_addresses: string[];
 }
 
 export interface LicenseRecord {
@@ -147,7 +212,6 @@ export class SupabaseService {
 
   /**
    * Save IP registration data to sensor_data record
-   * This should be called AFTER successful IP registration
    */
   async saveIPRegistrationData(
     sensorDataId: number,
@@ -192,9 +256,228 @@ export class SupabaseService {
     }
   }
 
+  // ============================================================================
+  // DERIVATIVE IP ASSET METHODS
+  // ============================================================================
+
+  /**
+   * Save derivative IP registration data
+   */
+  async saveDerivativeIPRegistration(
+    derivativeData: Omit<DerivativeIPRecord, 'id' | 'created_at' | 'updated_at' | 'registered_at'>
+  ): Promise<{ success: boolean; data?: DerivativeIPRecord; error?: string }> {
+    try {
+      const { data: insertedData, error } = await this.client
+        .from('derivative_ip_assets')
+        .insert([{
+          ...derivativeData,
+          registered_at: new Date().toISOString(),
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase save derivative IP error:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log(`Derivative IP registration saved for sensor data ID: ${derivativeData.sensor_data_id}`);
+      return { success: true, data: insertedData };
+    } catch (error: any) {
+      console.error('Save derivative IP registration error:', error);
+      return { success: false, error: error.message || 'Failed to save derivative IP registration' };
+    }
+  }
+
+  /**
+   * Fetch derivative IPs with optional filters
+   */
+  async fetchDerivativeIPs(filters?: {
+    sensor_data_id?: number;
+    parent_ip_id?: string;
+    derivative_ip_id?: string;
+    creator_address?: string;
+    limit?: number;
+  }): Promise<{ success: boolean; data?: DerivativeIPRecord[]; error?: string }> {
+    try {
+      let query = this.client
+        .from('derivative_ip_assets')
+        .select('*')
+        .order('registered_at', { ascending: false });
+
+      if (filters?.sensor_data_id) {
+        query = query.eq('sensor_data_id', filters.sensor_data_id);
+      }
+
+      if (filters?.parent_ip_id) {
+        query = query.eq('parent_ip_id', filters.parent_ip_id);
+      }
+
+      if (filters?.derivative_ip_id) {
+        query = query.eq('derivative_ip_id', filters.derivative_ip_id);
+      }
+
+      if (filters?.creator_address) {
+        query = query.eq('creator_address', filters.creator_address);
+      }
+
+      if (filters?.limit) {
+        query = query.limit(filters.limit);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Supabase fetch derivative IPs error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data: data || [] };
+    } catch (error: any) {
+      console.error('Fetch derivative IPs error:', error);
+      return { success: false, error: error.message || 'Failed to fetch derivative IPs' };
+    }
+  }
+
+  /**
+   * Get derivative IPs with parent information
+   */
+  async getDerivativeIPsWithParentInfo(filters?: {
+    parent_ip_id?: string;
+    creator_address?: string;
+    limit?: number;
+  }): Promise<{ success: boolean; data?: DerivativeIPWithParentInfo[]; error?: string }> {
+    try {
+      let query = this.client
+        .from('derivative_ip_with_parent_info')
+        .select('*');
+
+      if (filters?.parent_ip_id) {
+        query = query.eq('parent_ip_id', filters.parent_ip_id);
+      }
+
+      if (filters?.creator_address) {
+        query = query.eq('creator_address', filters.creator_address);
+      }
+
+      if (filters?.limit) {
+        query = query.limit(filters.limit);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Supabase get derivative IPs with parent info error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data: data || [] };
+    } catch (error: any) {
+      console.error('Get derivative IPs with parent info error:', error);
+      return { success: false, error: error.message || 'Failed to get derivative IPs with parent info' };
+    }
+  }
+
+  /**
+   * Get derivative IP statistics
+   */
+  async getDerivativeIPStats(parentIpId?: string): Promise<{ success: boolean; data?: DerivativeIPStats[]; error?: string }> {
+    try {
+      let query = this.client
+        .from('derivative_ip_stats')
+        .select('*');
+
+      if (parentIpId) {
+        query = query.eq('parent_ip_id', parentIpId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Supabase derivative IP stats error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data: data || [] };
+    } catch (error: any) {
+      console.error('Get derivative IP stats error:', error);
+      return { success: false, error: error.message || 'Failed to get derivative IP stats' };
+    }
+  }
+
+  /**
+   * Call stored procedure to get derivatives by parent IP
+   */
+  async callGetDerivativesByParent(parentIp: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const { data, error } = await this.client
+        .rpc('get_derivative_ip_by_parent', { parent_ip: parentIp });
+
+      if (error) {
+        console.error('Supabase RPC get_derivative_ip_by_parent error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Call get_derivative_ip_by_parent error:', error);
+      return { success: false, error: error.message || 'Failed to call get_derivative_ip_by_parent' };
+    }
+  }
+
+  /**
+   * Call stored procedure to get derivative IP chain
+   */
+  async callGetDerivativeChain(startIpId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const { data, error } = await this.client
+        .rpc('get_derivative_ip_chain', { start_ip_id: startIpId });
+
+      if (error) {
+        console.error('Supabase RPC get_derivative_ip_chain error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Call get_derivative_ip_chain error:', error);
+      return { success: false, error: error.message || 'Failed to call get_derivative_ip_chain' };
+    }
+  }
+
+  /**
+   * Update derivative IP record
+   */
+  async updateDerivativeIP(
+    derivativeId: number,
+    updates: Partial<Omit<DerivativeIPRecord, 'id' | 'created_at' | 'updated_at' | 'registered_at'>>
+  ): Promise<{ success: boolean; data?: DerivativeIPRecord; error?: string }> {
+    try {
+      const { data, error } = await this.client
+        .from('derivative_ip_assets')
+        .update(updates)
+        .eq('id', derivativeId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase update derivative IP error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Update derivative IP error:', error);
+      return { success: false, error: error.message || 'Failed to update derivative IP' };
+    }
+  }
+
+  // ============================================================================
+  // LICENSE METHODS (unchanged from original)
+  // ============================================================================
+
   /**
    * Save license minting data to licenses table
-   * This should be called AFTER successful license minting
    */
   async saveLicenseMinting(licenseData: Omit<LicenseRecord, 'id' | 'created_at' | 'updated_at' | 'minted_at'>): Promise<{ success: boolean; data?: LicenseRecord; error?: string }> {
     try {
@@ -387,7 +670,92 @@ export class SupabaseService {
   }
 
   /**
-   * Check if a sensor reading already exists (to avoid duplicates)
+   * Update license amount
+   */
+  async updateLicenseAmount(
+    licenseId: number,
+    newAmount: number
+  ): Promise<{ success: boolean; data?: LicenseRecord; error?: string }> {
+    try {
+      if (newAmount < 0) {
+        return { success: false, error: 'License amount cannot be negative' };
+      }
+
+      const { data, error } = await this.client
+        .from('licenses')
+        .update({ amount: newAmount })
+        .eq('id', licenseId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase update license amount error:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log(`License amount updated for license ID: ${licenseId}`);
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Update license amount error:', error);
+      return { success: false, error: error.message || 'Failed to update license amount' };
+    }
+  }
+
+  /**
+   * Decrement license amount
+   */
+  async decrementLicenseAmount(
+    licenseId: number,
+    decrementBy: number = 1
+  ): Promise<{ success: boolean; data?: LicenseRecord; error?: string }> {
+    try {
+      const { data: currentLicense, error: fetchError } = await this.client
+        .from('licenses')
+        .select('amount')
+        .eq('id', licenseId)
+        .single();
+
+      if (fetchError) {
+        console.error('Fetch license error:', fetchError);
+        return { success: false, error: fetchError.message };
+      }
+
+      if (!currentLicense) {
+        return { success: false, error: 'License not found' };
+      }
+
+      const newAmount = currentLicense.amount - decrementBy;
+
+      if (newAmount < 0) {
+        return { success: false, error: `Cannot decrement by ${decrementBy}. Current amount: ${currentLicense.amount}` };
+      }
+
+      const { data, error } = await this.client
+        .from('licenses')
+        .update({ amount: newAmount })
+        .eq('id', licenseId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase decrement license amount error:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log(`License amount decremented by ${decrementBy} for license ID: ${licenseId}. New amount: ${newAmount}`);
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Decrement license amount error:', error);
+      return { success: false, error: error.message || 'Failed to decrement license amount' };
+    }
+  }
+
+  // ============================================================================
+  // SENSOR DATA METHODS (unchanged from original)
+  // ============================================================================
+
+  /**
+   * Check if a sensor reading already exists
    */
   async checkDuplicateExists(timestamp: string, type: string, location?: string): Promise<boolean> {
     try {
@@ -425,7 +793,7 @@ export class SupabaseService {
     startDate?: string;
     endDate?: string;
     limit?: number;
-    has_ip_registration?: boolean; // true = only registered, false = only unregistered
+    has_ip_registration?: boolean;
   }): Promise<{ success: boolean; data?: SensorDataRecord[]; error?: string }> {
     try {
       let query = this.client
@@ -521,90 +889,7 @@ export class SupabaseService {
       return { success: false, error: error.message || 'Failed to delete data' };
     }
   }
-  
-    /**
-   * Update license amount (e.g., decrease by 1 when license is used)
-   */
-  async updateLicenseAmount(
-    licenseId: number,
-    newAmount: number
-  ): Promise<{ success: boolean; data?: LicenseRecord; error?: string }> {
-    try {
-      // Validate that amount is not negative
-      if (newAmount < 0) {
-        return { success: false, error: 'License amount cannot be negative' };
-      }
 
-      const { data, error } = await this.client
-        .from('licenses')
-        .update({ amount: newAmount })
-        .eq('id', licenseId)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Supabase update license amount error:', error);
-        return { success: false, error: error.message };
-      }
-
-      console.log(`License amount updated for license ID: ${licenseId}`);
-      return { success: true, data };
-    } catch (error: any) {
-      console.error('Update license amount error:', error);
-      return { success: false, error: error.message || 'Failed to update license amount' };
-    }
-  }
-
-  /**
-   * Decrement license amount by a specified value (default 1)
-   */
-  async decrementLicenseAmount(
-    licenseId: number,
-    decrementBy: number = 1
-  ): Promise<{ success: boolean; data?: LicenseRecord; error?: string }> {
-    try {
-      // First, get the current amount
-      const { data: currentLicense, error: fetchError } = await this.client
-        .from('licenses')
-        .select('amount')
-        .eq('id', licenseId)
-        .single();
-
-      if (fetchError) {
-        console.error('Fetch license error:', fetchError);
-        return { success: false, error: fetchError.message };
-      }
-
-      if (!currentLicense) {
-        return { success: false, error: 'License not found' };
-      }
-
-      const newAmount = currentLicense.amount - decrementBy;
-
-      if (newAmount < 0) {
-        return { success: false, error: `Cannot decrement by ${decrementBy}. Current amount: ${currentLicense.amount}` };
-      }
-
-      // Update with the new amount
-      const { data, error } = await this.client
-        .from('licenses')
-        .update({ amount: newAmount })
-        .eq('id', licenseId)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Supabase decrement license amount error:', error);
-        return { success: false, error: error.message };
-      }
-
-      console.log(`License amount decremented by ${decrementBy} for license ID: ${licenseId}. New amount: ${newAmount}`);
-      return { success: true, data };
-    } catch (error: any) {
-      console.error('Decrement license amount error:', error);
-      return { success: false, error: error.message || 'Failed to decrement license amount' };
-    }
-  }
   /**
    * Get sensor data statistics
    */
@@ -638,7 +923,6 @@ export class SupabaseService {
     error?: string 
   }> {
     try {
-      // Get total registered count
       const { count: registeredCount, error: countError } = await this.client
         .from('sensor_data')
         .select('*', { count: 'exact', head: true })
@@ -648,7 +932,6 @@ export class SupabaseService {
         console.error('Count registered error:', countError);
       }
 
-      // Get total unregistered count
       const { count: unregisteredCount, error: unregError } = await this.client
         .from('sensor_data')
         .select('*', { count: 'exact', head: true })
@@ -658,7 +941,6 @@ export class SupabaseService {
         console.error('Count unregistered error:', unregError);
       }
 
-      // Get recent registrations
       const { data: recentRegistrations, error: recentError } = await this.client
         .from('sensor_data')
         .select('*')
