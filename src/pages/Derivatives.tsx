@@ -116,7 +116,7 @@ const formatDate = (dateString?: string) => {
   });
 };
 
-const Licenses = () => {
+const Derivatives = () => {
   const { toast } = useToast();
   const { address, isConnected } = useAccount();
   const [loading, setLoading] = useState(true);
@@ -818,4 +818,4 @@ const Licenses = () => {
   );
 };
 
-export default Licenses;
+export default Derivatives;

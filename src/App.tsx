@@ -8,7 +8,7 @@ import Marketplace from "./pages/Marketplace";
 import DataExtraction from "./pages/DataExtraction";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
-import Licenses from "./pages/Licenses";
+import Licenses from "./pages/Derivatives";
 const App = () => {
   // Force dark mode
   document.documentElement.classList.add('dark');
