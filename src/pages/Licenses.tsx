@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import Navbar from "@/components/Navbar";
 import DerivativeIPRegistrationDialog from "@/components/DerivativeIPRegistrationDialog";
+import { DerivativeSuccessDialog } from "@/components/DerivativeSuccessDialog"; // Import from separate file
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -123,9 +124,18 @@ const Licenses = () => {
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
   const [supabaseClient] = useState(() => createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
   
-  // Derivative registration dialog state
+  // Dialog states
   const [derivativeDialogOpen, setDerivativeDialogOpen] = useState(false);
+  const [showDerivativeSuccess, setShowDerivativeSuccess] = useState(false);
   const [selectedLicenseForDerivative, setSelectedLicenseForDerivative] = useState<LicenseWithDataset | null>(null);
+  const [successData, setSuccessData] = useState<{
+    ipId?: string;
+    txHash?: string;
+    storyExplorerUrl?: string;
+    parentIpId?: string;
+    datasetTitle?: string;
+    creatorName?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (isConnected && address) {
@@ -366,15 +376,42 @@ const Licenses = () => {
 
     setSelectedLicenseForDerivative(license);
     setDerivativeDialogOpen(true);
+    setShowDerivativeSuccess(false); // Reset success state
+    setSuccessData(null);
   };
 
-  const handleDerivativeRegistrationComplete = () => {
+  const handleDerivativeRegistrationComplete = (successData?: {
+    ipId?: string;
+    txHash?: string;
+    storyExplorerUrl?: string;
+    parentIpId?: string;
+    datasetTitle?: string;
+    creatorName?: string;
+  }) => {
+    // Close the registration dialog
+    setDerivativeDialogOpen(false);
+    
+    // Set success data and show success dialog
+    if (successData) {
+      setSuccessData(successData);
+      setTimeout(() => {
+        setShowDerivativeSuccess(true);
+      }, 100);
+    }
+    
     toast({
       title: "Derivative Created! 🎉",
       description: "Your derivative IP has been successfully registered",
     });
+    
     // Optionally refresh licenses
     fetchUserLicenses();
+  };
+
+  const handleCloseDerivativeSuccess = () => {
+    setShowDerivativeSuccess(false);
+    setSuccessData(null);
+    setSelectedLicenseForDerivative(null);
   };
 
   const convertLicenseToSensorData = (license: LicenseWithDataset): SensorData | null => {
@@ -447,15 +484,34 @@ const Licenses = () => {
       {selectedLicenseForDerivative && (
         <DerivativeIPRegistrationDialog
           open={derivativeDialogOpen}
-          onOpenChange={setDerivativeDialogOpen}
+          onOpenChange={(open) => {
+            setDerivativeDialogOpen(open);
+            if (!open) {
+              setSelectedLicenseForDerivative(null);
+            }
+          }}
           sensorData={convertLicenseToSensorData(selectedLicenseForDerivative)}
           location={selectedLicenseForDerivative.dataset_location || 'Unknown Location'}
           sensorDataId={selectedLicenseForDerivative.sensor_data_id}
           supabaseService={supabaseService}
           onRegistrationComplete={handleDerivativeRegistrationComplete}
-          // Pass license data
           parentIpAssetId={selectedLicenseForDerivative.ip_asset_id}
           licenseTermsId={selectedLicenseForDerivative.license_terms_id}
+        />
+      )}
+      
+      {/* Derivative Success Dialog */}
+      {successData && selectedLicenseForDerivative && (
+        <DerivativeSuccessDialog
+          open={showDerivativeSuccess}
+          onOpenChange={handleCloseDerivativeSuccess}
+          ipId={successData.ipId || ''}
+          txHash={successData.txHash || ''}
+          storyExplorerUrl={successData.storyExplorerUrl}
+          parentIpId={successData.parentIpId}
+          datasetTitle={selectedLicenseForDerivative.dataset_title || 'Unknown Dataset'}
+          creatorName={successData.creatorName || 'Unknown Creator'}
+          sensorDataId={selectedLicenseForDerivative.sensor_data_id}
         />
       )}
       
