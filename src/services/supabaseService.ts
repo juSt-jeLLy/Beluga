@@ -521,7 +521,90 @@ export class SupabaseService {
       return { success: false, error: error.message || 'Failed to delete data' };
     }
   }
+  
+    /**
+   * Update license amount (e.g., decrease by 1 when license is used)
+   */
+  async updateLicenseAmount(
+    licenseId: number,
+    newAmount: number
+  ): Promise<{ success: boolean; data?: LicenseRecord; error?: string }> {
+    try {
+      // Validate that amount is not negative
+      if (newAmount < 0) {
+        return { success: false, error: 'License amount cannot be negative' };
+      }
 
+      const { data, error } = await this.client
+        .from('licenses')
+        .update({ amount: newAmount })
+        .eq('id', licenseId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase update license amount error:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log(`License amount updated for license ID: ${licenseId}`);
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Update license amount error:', error);
+      return { success: false, error: error.message || 'Failed to update license amount' };
+    }
+  }
+
+  /**
+   * Decrement license amount by a specified value (default 1)
+   */
+  async decrementLicenseAmount(
+    licenseId: number,
+    decrementBy: number = 1
+  ): Promise<{ success: boolean; data?: LicenseRecord; error?: string }> {
+    try {
+      // First, get the current amount
+      const { data: currentLicense, error: fetchError } = await this.client
+        .from('licenses')
+        .select('amount')
+        .eq('id', licenseId)
+        .single();
+
+      if (fetchError) {
+        console.error('Fetch license error:', fetchError);
+        return { success: false, error: fetchError.message };
+      }
+
+      if (!currentLicense) {
+        return { success: false, error: 'License not found' };
+      }
+
+      const newAmount = currentLicense.amount - decrementBy;
+
+      if (newAmount < 0) {
+        return { success: false, error: `Cannot decrement by ${decrementBy}. Current amount: ${currentLicense.amount}` };
+      }
+
+      // Update with the new amount
+      const { data, error } = await this.client
+        .from('licenses')
+        .update({ amount: newAmount })
+        .eq('id', licenseId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase decrement license amount error:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log(`License amount decremented by ${decrementBy} for license ID: ${licenseId}. New amount: ${newAmount}`);
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Decrement license amount error:', error);
+      return { success: false, error: error.message || 'Failed to decrement license amount' };
+    }
+  }
   /**
    * Get sensor data statistics
    */
