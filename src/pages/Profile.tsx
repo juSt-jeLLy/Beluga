@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Thermometer, 
   Sun, 
@@ -27,19 +28,23 @@ import {
   ChevronUp,
   User,
   Image as ImageIcon,
-  ArrowRightLeft // Added for royalty payment
+  ArrowRightLeft
 } from "lucide-react";
 import { useAccount } from "wagmi";
 import { useToast } from "@/hooks/use-toast";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { SensorDataRecord, LicenseRecord } from "@/services/supabaseService";
-import { useRevenueClaiming, useClaimableRevenue } from "@/utils/revenueClaimingService";
-import { Address, zeroAddress } from "viem"; // Added zeroAddress
+import { 
+  useRevenueClaiming, 
+  useClaimableRevenue,
+  useRevenueClaimingFromDerivatives 
+} from "@/utils/revenueClaimingService";
+import { Address, zeroAddress } from "viem";
 import { ClaimRevenueDialog } from "@/components/ClaimRevenueDialog";
 import { getEnrichedMetadata, type EnrichedIPMetadata } from "@/utils/coreMetadataViewService";
 import { createClient } from '@supabase/supabase-js';
-import { useRoyaltyPayment } from "@/utils/royaltyPaymentService"; // Added import
-import { PayRoyaltyDialog } from "@/components/PayRoyaltyDialog"; // Added import
+import { useRoyaltyPayment } from "@/utils/royaltyPaymentService";
+import { PayRoyaltyDialog } from "@/components/PayRoyaltyDialog";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -177,12 +182,21 @@ const formatDate = (dateString?: string) => {
 const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
   const { claimableAmount, loading: fetchingRevenue, refetch } = useClaimableRevenue(dataset.ip_asset_id as Address);
   const { claimRevenue, claiming } = useRevenueClaiming();
+  const { claimRevenueFromDerivatives, claimingFromDerivatives } = useRevenueClaimingFromDerivatives();
   const { toast } = useToast();
+  const [supabaseClient] = useState(() => createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState(false);
   const [claimTxHash, setClaimTxHash] = useState<string>("");
   const [claimError, setClaimError] = useState<string>("");
+  
+  const [claimDerivativesDialogOpen, setClaimDerivativesDialogOpen] = useState(false);
+  const [claimDerivativesSuccess, setClaimDerivativesSuccess] = useState(false);
+  const [claimDerivativesTxHash, setClaimDerivativesTxHash] = useState<string>("");
+  const [claimDerivativesError, setClaimDerivativesError] = useState<string>("");
+  const [derivativesForDataset, setDerivativesForDataset] = useState<DerivativeWithRevenue[]>([]);
+  const [loadingDerivatives, setLoadingDerivatives] = useState(false);
 
   const formattedAmount = claimableAmount 
     ? (parseFloat(claimableAmount) / 1e18).toFixed(6)
@@ -216,6 +230,121 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
     }
   };
 
+  const handleClaimRevenueFromDerivatives = async () => {
+    setLoadingDerivatives(true);
+    
+    try {
+      // Fetch derivatives for this dataset (parent IP)
+      const result = await supabaseClient
+        .from('derivative_ip_assets')
+        .select(`
+          derivative_ip_id,
+          parent_ip_id,
+          creator_name
+        `)
+        .eq('parent_ip_id', dataset.ip_asset_id);
+      
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+      
+      if (result.data && result.data.length > 0) {
+        setDerivativesForDataset(result.data.map(d => ({
+          id: 0,
+          sensor_data_id: 0,
+          derivative_ip_id: d.derivative_ip_id,
+          parent_ip_id: d.parent_ip_id,
+          license_terms_id: "",
+          creator_name: d.creator_name,
+          creator_address: "",
+          royalty_recipient: "",
+          royalty_percentage: 0,
+          max_minting_fee: 0,
+          max_revenue_share: 0,
+          max_rts: 0,
+          transaction_hash: "",
+          metadata_url: "",
+          character_file_url: "",
+          nft_token_id: "",
+          nft_contract_address: "",
+          image_url: "",
+          registered_at: "",
+          created_at: "",
+          derivative_type: "",
+          derivative_title: "",
+          claimableAmount: "0",
+          claiming: false
+        })));
+        
+        setClaimDerivativesDialogOpen(true);
+      } else {
+        toast({
+          title: "No Derivatives Found",
+          description: "This dataset doesn't have any derivatives yet.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('Error fetching derivatives:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch derivatives",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingDerivatives(false);
+    }
+  };
+
+  const handleConfirmClaimFromDerivatives = async () => {
+    if (derivativesForDataset.length === 0) {
+      setClaimDerivativesError("No derivatives found for this dataset");
+      return;
+    }
+
+    setClaimDerivativesSuccess(false);
+    setClaimDerivativesError("");
+    setClaimDerivativesTxHash("");
+    
+    try {
+      // Convert derivative IP IDs to Address type
+      const childIpIds = derivativesForDataset.map(d => d.derivative_ip_id as Address);
+      
+      console.log('Claiming from derivatives:', {
+        parentIpId: dataset.ip_asset_id,
+        childCount: childIpIds.length,
+        childIpIds
+      });
+      
+      const result = await claimRevenueFromDerivatives(
+        dataset.ip_asset_id as Address,
+        childIpIds
+      );
+      
+      if (result.success) {
+        const txHash = result.txHashes && result.txHashes.length > 0
+          ? result.txHashes[0]
+          : '';
+        
+        setClaimDerivativesTxHash(txHash);
+        setClaimDerivativesSuccess(true);
+        setTimeout(() => refetch(), 2000);
+        
+        toast({
+          title: "Revenue Claimed from Derivatives",
+          description: `Successfully claimed revenue from ${childIpIds.length} derivatives`,
+        });
+      } else {
+        setClaimDerivativesError(result.error || "Failed to claim revenue from derivatives");
+        setClaimDerivativesSuccess(false);
+      }
+    } catch (error: any) {
+      console.error('Claim from derivatives error:', error);
+      setClaimDerivativesError(error.message || "An unexpected error occurred");
+      setClaimDerivativesSuccess(false);
+    }
+  };
+
   const handleDialogClose = (open: boolean) => {
     setDialogOpen(open);
     if (!open) {
@@ -223,6 +352,18 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
         setClaimSuccess(false);
         setClaimError("");
         setClaimTxHash("");
+      }, 300);
+    }
+  };
+
+  const handleClaimDerivativesDialogClose = (open: boolean) => {
+    setClaimDerivativesDialogOpen(open);
+    if (!open) {
+      setTimeout(() => {
+        setClaimDerivativesSuccess(false);
+        setClaimDerivativesError("");
+        setClaimDerivativesTxHash("");
+        setDerivativesForDataset([]);
       }, 300);
     }
   };
@@ -285,7 +426,8 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
             </div>
           </div>
           
-          <div className="flex gap-2 pt-4 border-t border-border">
+          <div className="flex gap-2 pt-4 border-t border-border flex-wrap">
+            {/* Claim Revenue Button */}
             <Button 
               size="sm" 
               variant="outline"
@@ -306,6 +448,27 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
               )}
             </Button>
             
+            {/* Claim Revenue from Derivatives Button */}
+            <Button 
+              size="sm" 
+              variant="outline"
+              className="border-blue-500/50 text-blue-600 hover:bg-blue-500/10"
+              onClick={handleClaimRevenueFromDerivatives}
+              disabled={loadingDerivatives || claimingFromDerivatives}
+            >
+              {loadingDerivatives || claimingFromDerivatives ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  {loadingDerivatives ? 'Loading...' : 'Claiming...'}
+                </>
+              ) : (
+                <>
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  Claim from Derivatives
+                </>
+              )}
+            </Button>
+            
             {dataset.story_explorer_url && (
               <Button 
                 size="sm" 
@@ -321,6 +484,7 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
         </CardContent>
       </Card>
 
+      {/* Claim Revenue Dialog */}
       <ClaimRevenueDialog
         open={dialogOpen}
         onOpenChange={handleDialogClose}
@@ -332,6 +496,126 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
         ipAssetId={dataset.ip_asset_id}
         error={claimError}
       />
+
+      {/* Claim Revenue from Derivatives Dialog */}
+      <Dialog open={claimDerivativesDialogOpen} onOpenChange={handleClaimDerivativesDialogClose}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              Claim Revenue from Derivatives
+            </DialogTitle>
+            <DialogDescription>
+              Claim revenue earned from derivatives of this dataset
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {claimDerivativesSuccess ? (
+              <div className="space-y-3">
+                <div className="bg-green-500/10 p-4 rounded-lg border border-green-500/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <span className="font-semibold text-green-600">Success!</span>
+                  </div>
+                  <p className="text-sm">
+                    Successfully claimed revenue from {derivativesForDataset.length} derivatives
+                  </p>
+                </div>
+                
+                {claimDerivativesTxHash && (
+                  <div>
+                    <p className="text-sm font-semibold mb-1">Transaction Hash:</p>
+                    <p className="text-xs font-mono break-all bg-muted p-2 rounded">
+                      {claimDerivativesTxHash}
+                    </p>
+                  </div>
+                )}
+                
+                <div className="flex justify-end">
+                  <Button onClick={() => handleClaimDerivativesDialogClose(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            ) : claimDerivativesError ? (
+              <div className="space-y-3">
+                <div className="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                    <span className="font-semibold text-red-600">Error</span>
+                  </div>
+                  <p className="text-sm">{claimDerivativesError}</p>
+                </div>
+                
+                <div className="flex justify-end">
+                  <Button onClick={() => setClaimDerivativesError("")}>
+                    Try Again
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <p className="text-sm font-semibold mb-2">Dataset:</p>
+                  <p className="text-sm">{dataset.title}</p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {dataset.ip_asset_id.slice(0, 20)}...
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-semibold mb-2">Derivatives Found:</p>
+                  {derivativesForDataset.length > 0 ? (
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {derivativesForDataset.map((derivative, index) => (
+                        <div key={index} className="flex items-center justify-between p-2 border rounded">
+                          <div>
+                            <p className="text-xs font-medium">Derivative {index + 1}</p>
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {derivative.derivative_ip_id.slice(0, 10)}...{derivative.derivative_ip_id.slice(-8)}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {derivative.creator_name}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No derivatives found</p>
+                  )}
+                </div>
+                
+                <div className="flex justify-between pt-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => handleClaimDerivativesDialogClose(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleConfirmClaimFromDerivatives}
+                    disabled={claimingFromDerivatives || derivativesForDataset.length === 0}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {claimingFromDerivatives ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Claiming...
+                      </>
+                    ) : (
+                      <>
+                        <Coins className="h-4 w-4 mr-2" />
+                        Claim from {derivativesForDataset.length} Derivatives
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
@@ -620,7 +904,7 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
         derivativeIpId={derivative.derivative_ip_id}
         error={royaltyError}
         onPayRoyalty={handlePayRoyalty}
-        maxAmount="100" // You can adjust this based on your needs or fetch from the license terms
+        maxAmount="100"
       />
     </>
   );
