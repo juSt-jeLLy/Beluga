@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import Navbar from "@/components/Navbar";
 import DerivativeIPRegistrationDialog from "@/components/DerivativeIPRegistrationDialog";
-import { DerivativeSuccessDialog } from "@/components/DerivativeSuccessDialog"; // Import from separate file
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DerivativeSuccessDialog } from "@/components/DerivativeSuccessDialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -12,7 +12,6 @@ import {
   AlertCircle, 
   ExternalLink, 
   Wallet,
-  FileCheck,
   Calendar,
   MapPin,
   TrendingUp,
@@ -21,44 +20,51 @@ import {
   Droplets,
   Sprout,
   CloudRain,
-  DollarSign,
-  Hash,
   Info,
   Image as ImageIcon,
   User,
   ChevronDown,
   ChevronUp,
   GitBranch,
-  FileText,
-  Shield
+  Shield,
+  Clock,
+  Tag,
+  Sparkles
 } from "lucide-react";
 import { createSupabaseService } from "@/services/supabaseService";
-import type { LicenseRecord } from "@/services/supabaseService";
 import { getEnrichedMetadata, type EnrichedIPMetadata } from "@/utils/coreMetadataViewService";
+import marketplaceBg from "@/assets/marketplace-bg.jpg";
+import type { SensorData } from "@/services/gmailService";
 import { createClient } from '@supabase/supabase-js';
-import { SensorData } from "@/services/gmailService";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-interface LicenseWithDataset extends LicenseRecord {
-  dataset_title?: string;
-  dataset_type?: string;
-  dataset_location?: string;
-  dataset_data?: string;
-  dataset_timestamp?: string;
-  dataset_sensor_health?: string;
+interface MarketplaceDataset {
+  id: number;
+  ip_asset_id: string;
+  type: string;
+  title: string;
+  description: string;
+  location?: string;
+  timestamp: string;
+  registered_at: string;
+  creator_address: string;
+  story_explorer_url?: string;
+  icon: React.ReactNode;
+  gradient: string;
+  sensor_health: string;
+  data: string;
+  license_terms_ids?: string[];
+  revenue_share?: number;
+  minting_fee?: number;
   dataset_image_hash?: string;
-  icon?: React.ReactNode;
-  gradient?: string;
   metadata?: EnrichedIPMetadata;
   metadataLoading?: boolean;
   showMetadata?: boolean;
 }
 
-const getIconForType = (type?: string): React.ReactNode => {
-  if (!type) return <TrendingUp className="h-5 w-5" />;
-  
+const getIconForType = (type: string): React.ReactNode => {
   switch (type.toLowerCase()) {
     case 'temperature':
     case 'temp':
@@ -80,9 +86,7 @@ const getIconForType = (type?: string): React.ReactNode => {
   }
 };
 
-const getGradientForType = (type?: string): string => {
-  if (!type) return "from-purple-500 to-pink-500";
-  
+const getGradientForType = (type: string): string => {
   switch (type.toLowerCase()) {
     case 'temperature':
     case 'temp':
@@ -104,13 +108,29 @@ const getGradientForType = (type?: string): string => {
   }
 };
 
-const formatDate = (dateString?: string) => {
-  if (!dateString) return 'N/A';
+const formatDate = (dateString: string) => {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
+    day: 'numeric'
+  });
+};
+
+const formatTime = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatDateTime = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleString('en-US', {
+    month: 'short',
     day: 'numeric',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
   });
@@ -120,14 +140,14 @@ const Derivatives = () => {
   const { toast } = useToast();
   const { address, isConnected } = useAccount();
   const [loading, setLoading] = useState(true);
-  const [licenses, setLicenses] = useState<LicenseWithDataset[]>([]);
+  const [datasets, setDatasets] = useState<MarketplaceDataset[]>([]);
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
   const [supabaseClient] = useState(() => createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
   
   // Dialog states
   const [derivativeDialogOpen, setDerivativeDialogOpen] = useState(false);
   const [showDerivativeSuccess, setShowDerivativeSuccess] = useState(false);
-  const [selectedLicenseForDerivative, setSelectedLicenseForDerivative] = useState<LicenseWithDataset | null>(null);
+  const [selectedDatasetForDerivative, setSelectedDatasetForDerivative] = useState<MarketplaceDataset | null>(null);
   const [successData, setSuccessData] = useState<{
     ipId?: string;
     txHash?: string;
@@ -139,88 +159,77 @@ const Derivatives = () => {
 
   useEffect(() => {
     if (isConnected && address) {
-      fetchUserLicenses();
+      fetchRegisteredDatasets();
     } else {
       setLoading(false);
     }
   }, [address, isConnected]);
 
-  const fetchUserLicenses = async () => {
-    if (!address) return;
-
+  const fetchRegisteredDatasets = async () => {
     setLoading(true);
     try {
-      const normalizedAddress = address.toLowerCase();
-      console.log('Fetching licenses for receiver address:', normalizedAddress);
-      
-      const result = await supabaseClient
-        .from('licenses')
-        .select('*')
-        .ilike('receiver_address', normalizedAddress)
-        .order('minted_at', { ascending: false })
-        .limit(100);
+      // Use the same logic as marketplace page - fetch registered sensor data
+      const result = await supabaseService.fetchSensorData({
+        has_ip_registration: true
+      });
 
-      console.log('Licenses query result:', result);
-
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
-
-      if (result.data && result.data.length > 0) {
-        const sensorDataIds = [...new Set(result.data.map(l => l.sensor_data_id))];
+      if (result.success && result.data && result.data.length > 0) {
+        // Fetch image_hash for all datasets
+        const datasetIds = result.data.map(record => record.id!);
         
-        console.log('Fetching sensor data for IDs:', sensorDataIds);
-        
-        const sensorDataResult = await supabaseClient
+        const { data: imageData, error } = await supabaseClient
           .from('sensor_data')
-          .select('*')
-          .in('id', sensorDataIds);
+          .select('id, image_hash')
+          .in('id', datasetIds);
         
-        console.log('Sensor data result:', sensorDataResult);
-        
-        const sensorDataMap = new Map(
-          sensorDataResult.data?.map(sd => [sd.id, sd]) || []
+        // Create a map of id -> image_hash
+        const imageHashMap = new Map(
+          imageData?.map(item => [item.id, item.image_hash]) || []
         );
-        
-        const enrichedLicenses = result.data.map((license) => {
-          const sensorData = sensorDataMap.get(license.sensor_data_id);
-          
-          console.log(`License ${license.id}: sensor_data_id=${license.sensor_data_id}, found=${!!sensorData}`);
+
+        const transformedData: MarketplaceDataset[] = result.data.map(record => {
+          const dataPreview = record.data.length > 100 
+            ? record.data.substring(0, 100) + '...' 
+            : record.data;
           
           return {
-            ...license,
-            dataset_title: sensorData?.title || 'Unknown Dataset',
-            dataset_type: sensorData?.type || 'Unknown',
-            dataset_location: sensorData?.location || undefined,
-            dataset_data: sensorData?.data || undefined,
-            dataset_timestamp: sensorData?.timestamp || undefined,
-            dataset_sensor_health: sensorData?.sensor_health || undefined,
-            dataset_image_hash: sensorData?.image_hash || undefined,
-            icon: getIconForType(sensorData?.type),
-            gradient: getGradientForType(sensorData?.type),
+            id: record.id!,
+            ip_asset_id: record.ip_asset_id!,
+            type: record.type,
+            title: record.title,
+            description: `${record.type} data from ${record.location || 'unknown location'}. ${dataPreview}`,
+            location: record.location,
+            timestamp: record.timestamp,
+            registered_at: record.registered_at || record.created_at || record.timestamp,
+            creator_address: record.creator_address!,
+            story_explorer_url: record.story_explorer_url,
+            icon: getIconForType(record.type),
+            gradient: getGradientForType(record.type),
+            sensor_health: record.sensor_health,
+            data: record.data,
+            license_terms_ids: record.license_terms_ids,
+            revenue_share: record.revenue_share,
+            minting_fee: record.minting_fee,
+            dataset_image_hash: imageHashMap.get(record.id!) || '',
             showMetadata: false,
             metadataLoading: false,
           };
         });
 
-        setLicenses(enrichedLicenses);
-
+        setDatasets(transformedData);
+        
         toast({
-          title: "Licenses Loaded",
-          description: `Found ${enrichedLicenses.length} licenses minted to your address`,
+          title: "Datasets Loaded",
+          description: `Found ${transformedData.length} registered datasets available for derivatives`,
         });
       } else {
-        setLicenses([]);
-        toast({
-          title: "No Licenses Found",
-          description: "No licenses have been minted to your address yet",
-        });
+        setDatasets([]);
       }
     } catch (error: any) {
-      console.error('Error fetching licenses:', error);
+      console.error('Error fetching marketplace data:', error);
       toast({
         title: "Error",
-        description: "Failed to load your licenses",
+        description: "Failed to load datasets",
         variant: "destructive",
       });
     } finally {
@@ -241,25 +250,25 @@ const Derivatives = () => {
     }
   };
 
-  const toggleMetadata = async (licenseId: number | string) => {
-    const license = licenses.find(l => l.id === licenseId);
-    if (!license) return;
+  const toggleMetadata = async (datasetId: number) => {
+    const dataset = datasets.find(d => d.id === datasetId);
+    if (!dataset) return;
 
-    if (license.showMetadata) {
-      setLicenses(prev => prev.map(l => 
-        l.id === licenseId ? { ...l, showMetadata: false } : l
+    if (dataset.showMetadata) {
+      setDatasets(prev => prev.map(d => 
+        d.id === datasetId ? { ...d, showMetadata: false } : d
       ));
       return;
     }
 
-    if (!license.metadata && !license.metadataLoading) {
-      setLicenses(prev => prev.map(l => 
-        l.id === licenseId ? { ...l, metadataLoading: true } : l
+    if (!dataset.metadata && !dataset.metadataLoading) {
+      setDatasets(prev => prev.map(d => 
+        d.id === datasetId ? { ...d, metadataLoading: true } : d
       ));
 
       try {
-        const metadata = await getEnrichedMetadata(license.ip_asset_id as `0x${string}`);
-        console.log('Fetched metadata for', license.ip_asset_id, metadata);
+        const metadata = await getEnrichedMetadata(dataset.ip_asset_id as `0x${string}`);
+        console.log('Fetched metadata for', dataset.ip_asset_id, metadata);
         
         const decodedJson = decodeJsonString(metadata.jsonString);
         console.log('Decoded JSON:', decodedJson);
@@ -321,13 +330,13 @@ const Derivatives = () => {
           }
         }
         
-        setLicenses(prev => prev.map(l => 
-          l.id === licenseId ? { 
-            ...l, 
+        setDatasets(prev => prev.map(d => 
+          d.id === datasetId ? { 
+            ...d, 
             metadata, 
             metadataLoading: false, 
             showMetadata: true 
-          } : l
+          } : d
         ));
 
         toast({
@@ -336,8 +345,8 @@ const Derivatives = () => {
         });
       } catch (error: any) {
         console.error('Error fetching metadata:', error);
-        setLicenses(prev => prev.map(l => 
-          l.id === licenseId ? { ...l, metadataLoading: false } : l
+        setDatasets(prev => prev.map(d => 
+          d.id === datasetId ? { ...d, metadataLoading: false } : d
         ));
         
         toast({
@@ -347,34 +356,34 @@ const Derivatives = () => {
         });
       }
     } else {
-      setLicenses(prev => prev.map(l => 
-        l.id === licenseId ? { ...l, showMetadata: true } : l
+      setDatasets(prev => prev.map(d => 
+        d.id === datasetId ? { ...d, showMetadata: true } : d
       ));
     }
   };
 
-  const handleOpenDerivativeDialog = (license: LicenseWithDataset) => {
-    // Check if we have all required license data
-    if (!license.ip_asset_id || !license.license_terms_id) {
+  const handleOpenDerivativeDialog = (dataset: MarketplaceDataset) => {
+    // Check if we have all required data for derivative creation
+    if (!dataset.ip_asset_id || !dataset.license_terms_ids || dataset.license_terms_ids.length === 0) {
       toast({
-        title: "Missing License Data",
-        description: "This license doesn't have complete IP data for derivative registration",
+        title: "Missing Required Data",
+        description: "This dataset doesn't have complete IP data for derivative registration",
         variant: "destructive",
       });
       return;
     }
 
     // Check if we have sensor data
-    if (!license.dataset_data || !license.dataset_timestamp) {
+    if (!dataset.data || !dataset.timestamp) {
       toast({
         title: "Missing Sensor Data",
-        description: "This license doesn't have complete sensor data for derivative registration",
+        description: "This dataset doesn't have complete sensor data for derivative registration",
         variant: "destructive",
       });
       return;
     }
 
-    setSelectedLicenseForDerivative(license);
+    setSelectedDatasetForDerivative(dataset);
     setDerivativeDialogOpen(true);
     setShowDerivativeSuccess(false); // Reset success state
     setSuccessData(null);
@@ -404,28 +413,28 @@ const Derivatives = () => {
       description: "Your derivative IP has been successfully registered",
     });
     
-    // Optionally refresh licenses
-    fetchUserLicenses();
+    // Optionally refresh datasets
+    fetchRegisteredDatasets();
   };
 
   const handleCloseDerivativeSuccess = () => {
     setShowDerivativeSuccess(false);
     setSuccessData(null);
-    setSelectedLicenseForDerivative(null);
+    setSelectedDatasetForDerivative(null);
   };
 
-  const convertLicenseToSensorData = (license: LicenseWithDataset): SensorData | null => {
-    if (!license.dataset_data || !license.dataset_timestamp || !license.dataset_type || !license.dataset_title) {
+  const convertDatasetToSensorData = (dataset: MarketplaceDataset): SensorData | null => {
+    if (!dataset.data || !dataset.timestamp || !dataset.type || !dataset.title) {
       return null;
     }
 
     return {
-      type: license.dataset_type,
-      title: license.dataset_title,
-      data: license.dataset_data,
-      timestamp: license.dataset_timestamp,
-      sensorHealth: license.dataset_sensor_health || 'Unknown',
-      imageHash: license.dataset_image_hash || '',
+      type: dataset.type,
+      title: dataset.title,
+      data: dataset.data,
+      timestamp: dataset.timestamp,
+      sensorHealth: dataset.sensor_health || 'Unknown',
+      imageHash: dataset.dataset_image_hash || '',
     };
   };
 
@@ -443,7 +452,7 @@ const Derivatives = () => {
                 Connect Your <span className="gradient-text">Wallet</span>
               </h1>
               <p className="text-xl text-muted-foreground mb-6">
-                Please connect your wallet to view your license collection
+                Please connect your wallet to create derivatives from registered datasets
               </p>
               <Button className="bg-gradient-to-r from-primary to-secondary">
                 Connect Wallet
@@ -460,14 +469,22 @@ const Derivatives = () => {
       <div className="min-h-screen bg-background">
         <Navbar />
         <div className="relative pt-24 pb-12 overflow-hidden">
+          <div className="absolute inset-0 z-0">
+            <img 
+              src={marketplaceBg} 
+              alt="Derivatives Background" 
+              className="w-full h-full object-cover opacity-20"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background to-background"></div>
+          </div>
           <div className="container mx-auto px-4 relative z-10">
             <div className="text-center py-24">
               <Loader2 className="h-12 w-12 animate-spin mx-auto mb-6 text-primary" />
               <h1 className="text-4xl md:text-5xl font-bold mb-4">
-                Loading <span className="gradient-text">Your Licenses</span>
+                Loading <span className="gradient-text">Datasets</span>
               </h1>
               <p className="text-xl text-muted-foreground">
-                Fetching your license collection...
+                Fetching registered datasets for derivatives...
               </p>
             </div>
           </div>
@@ -481,27 +498,27 @@ const Derivatives = () => {
       <Navbar />
       
       {/* Derivative Registration Dialog */}
-      {selectedLicenseForDerivative && (
+      {selectedDatasetForDerivative && (
         <DerivativeIPRegistrationDialog
           open={derivativeDialogOpen}
           onOpenChange={(open) => {
             setDerivativeDialogOpen(open);
             if (!open) {
-              setSelectedLicenseForDerivative(null);
+              setSelectedDatasetForDerivative(null);
             }
           }}
-          sensorData={convertLicenseToSensorData(selectedLicenseForDerivative)}
-          location={selectedLicenseForDerivative.dataset_location || 'Unknown Location'}
-          sensorDataId={selectedLicenseForDerivative.sensor_data_id}
+          sensorData={convertDatasetToSensorData(selectedDatasetForDerivative)}
+          location={selectedDatasetForDerivative.location || 'Unknown Location'}
+          sensorDataId={selectedDatasetForDerivative.id}
           supabaseService={supabaseService}
           onRegistrationComplete={handleDerivativeRegistrationComplete}
-          parentIpAssetId={selectedLicenseForDerivative.ip_asset_id}
-          licenseTermsId={selectedLicenseForDerivative.license_terms_id}
+          parentIpAssetId={selectedDatasetForDerivative.ip_asset_id}
+          licenseTermsId={selectedDatasetForDerivative.license_terms_ids?.[0] || ''}
         />
       )}
       
       {/* Derivative Success Dialog */}
-      {successData && selectedLicenseForDerivative && (
+      {successData && selectedDatasetForDerivative && (
         <DerivativeSuccessDialog
           open={showDerivativeSuccess}
           onOpenChange={handleCloseDerivativeSuccess}
@@ -509,39 +526,58 @@ const Derivatives = () => {
           txHash={successData.txHash || ''}
           storyExplorerUrl={successData.storyExplorerUrl}
           parentIpId={successData.parentIpId}
-          datasetTitle={selectedLicenseForDerivative.dataset_title || 'Unknown Dataset'}
+          datasetTitle={selectedDatasetForDerivative.title || 'Unknown Dataset'}
           creatorName={successData.creatorName || 'Unknown Creator'}
-          sensorDataId={selectedLicenseForDerivative.sensor_data_id}
+          sensorDataId={selectedDatasetForDerivative.id}
         />
       )}
       
       <div className="relative pt-24 pb-12 overflow-hidden">
-        <div className="absolute inset-0 z-0 bg-gradient-to-b from-background/80 via-background to-background"></div>
+        <div className="absolute inset-0 z-0">
+          <img 
+            src={marketplaceBg} 
+            alt="Derivatives Background" 
+            className="w-full h-full object-cover opacity-20"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background to-background"></div>
+        </div>
         
         <div className="container mx-auto px-4 relative z-10">
           <div className="text-center mb-12 animate-slide-up">
             <Badge className="mb-4 bg-primary/10 text-primary border-primary/20 animate-glow">
-              My Collection
+              Create Derivatives
             </Badge>
             <h1 className="text-5xl md:text-6xl font-bold mb-4">
-              Your <span className="gradient-text">Licenses</span>
+              Create <span className="gradient-text">Derivatives</span>
             </h1>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-2">
-              All agricultural data licenses minted to your address
+              Build derivative IP assets from registered datasets in the marketplace
             </p>
             <p className="text-sm text-muted-foreground font-mono">
-              {address?.slice(0, 6)}...{address?.slice(-4)}
+              Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
             </p>
+            <div className="mt-6 flex items-center justify-center gap-4">
+              <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/30">
+                {datasets.length} Registered Datasets
+              </Badge>
+              <Badge variant="outline" className="bg-indigo-500/10 text-indigo-500 border-indigo-500/30">
+                Create Derivatives
+              </Badge>
+              <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/30">
+                IP Protected
+              </Badge>
+            </div>
           </div>
 
-          {licenses.length === 0 ? (
+          {datasets.length === 0 ? (
             <div className="text-center py-24">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
                 <AlertCircle className="h-10 w-10 text-muted-foreground" />
               </div>
-              <h2 className="text-3xl font-bold mb-4">No Licenses Yet</h2>
+              <h2 className="text-3xl font-bold mb-4">No Registered Datasets</h2>
               <p className="text-xl text-muted-foreground mb-6 max-w-2xl mx-auto">
-                No licenses have been minted to your address yet. Visit the marketplace to mint licenses for agricultural data!
+                There are no registered datasets available for derivative creation yet. 
+                Check back later or visit the marketplace to see available datasets.
               </p>
               <Button 
                 onClick={() => window.location.href = '/marketplace'}
@@ -551,268 +587,302 @@ const Derivatives = () => {
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-              {licenses.map((license, index) => (
-                <Card 
-                  key={license.id}
-                  className="glass-card hover-lift group animate-slide-in-left overflow-hidden"
-                  style={{animationDelay: `${index * 0.05}s`}}
-                >
-                  <div className={`h-2 bg-gradient-to-r ${license.gradient}`}></div>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className={`w-12 h-12 bg-gradient-to-br ${license.gradient} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                        <div className="text-white">
-                          {license.icon}
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+                {datasets.map((dataset, index) => (
+                  <Card 
+                    key={dataset.id}
+                    className="glass-card hover-lift group animate-slide-in-left overflow-hidden"
+                    style={{animationDelay: `${index * 0.05}s`}}
+                  >
+                    <div className={`h-2 bg-gradient-to-r ${dataset.gradient}`}></div>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-14 h-14 bg-gradient-to-br ${dataset.gradient} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                          <div className="text-white">
+                            {dataset.icon}
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-primary font-bold text-xs">
+                          IP Protected
+                        </Badge>
+                      </div>
+                      
+                      <CardTitle className="text-xl group-hover:text-primary transition-colors mb-2">
+                        {dataset.title}
+                      </CardTitle>
+                      
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs">
+                          {dataset.type}
+                        </Badge>
+                        <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20 text-xs">
+                          {dataset.sensor_health}
+                        </Badge>
+                        {dataset.license_terms_ids && dataset.license_terms_ids.length > 0 && (
+                          <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-xs">
+                            {dataset.license_terms_ids.length} License(s)
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2 mt-3">
+                        {dataset.location && (
+                          <div className="flex items-center gap-2 text-sm bg-blue-500/5 p-2 rounded border border-blue-500/20">
+                            <MapPin className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                            <span className="font-semibold text-blue-600">Location:</span>
+                            <span className="text-foreground font-medium">{dataset.location}</span>
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center gap-2 text-sm bg-amber-500/5 p-2 rounded border border-amber-500/20">
+                          <Calendar className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                          <span className="font-semibold text-amber-600">Recorded:</span>
+                          <span className="text-foreground font-medium">{formatDate(dataset.timestamp)}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 text-sm bg-purple-500/5 p-2 rounded border border-purple-500/20">
+                          <Clock className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                          <span className="font-semibold text-purple-600">Time:</span>
+                          <span className="text-foreground font-medium">{formatTime(dataset.timestamp)}</span>
                         </div>
                       </div>
-                      <Badge variant="secondary" className="text-primary font-bold text-xs">
-                        x{license.amount}
-                      </Badge>
-                    </div>
+                    </CardHeader>
                     
-                    <CardTitle className="text-lg group-hover:text-primary transition-colors mb-2">
-                      {license.dataset_title || 'Unknown Dataset'}
-                    </CardTitle>
-                    
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs">
-                        {license.dataset_type || 'Unknown'}
-                      </Badge>
-                      {license.revenue_share_percentage && (
-                        <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 text-xs">
-                          {license.revenue_share_percentage}% Rev
-                        </Badge>
-                      )}
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent className="space-y-3">
-                    {license.dataset_location && (
-                      <div className="flex items-center gap-2 text-sm bg-blue-500/5 p-2 rounded border border-blue-500/20">
-                        <MapPin className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                        <span className="text-foreground">{license.dataset_location}</span>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center gap-2 text-sm bg-purple-500/5 p-2 rounded border border-purple-500/20">
-                      <Calendar className="h-3 w-3 text-purple-500 flex-shrink-0" />
-                      <span className="text-xs text-muted-foreground">Minted:</span>
-                      <span className="text-xs text-foreground font-medium">{formatDate(license.minted_at)}</span>
-                    </div>
-                    
-                    {license.minting_fee_paid && (
-                      <div className="flex items-center gap-2 text-sm bg-amber-500/5 p-2 rounded border border-amber-500/20">
-                        <DollarSign className="h-3 w-3 text-amber-500 flex-shrink-0" />
-                        <span className="text-xs text-muted-foreground">Paid:</span>
-                        <span className="text-xs text-foreground font-medium">{license.minting_fee_paid.toFixed(4)} WIP</span>
-                      </div>
-                    )}
-                    
-                    <div className="pt-2 border-t border-border space-y-2">
-                      {/* IP Asset ID */}
-                      <div className="flex items-center gap-2 text-xs">
-                        <Shield className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-muted-foreground">IP:</span>
-                        <span className="font-mono text-primary">{license.ip_asset_id.slice(0, 10)}...</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-4 w-4"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank');
-                          }}
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </Button>
+                    <CardContent className="space-y-3">
+                      <div className="text-sm text-muted-foreground line-clamp-2">
+                        {dataset.description}
                       </div>
                       
-                      {/* License Terms ID */}
-                      <div className="flex items-center gap-2 text-xs">
-                        <FileText className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-muted-foreground">License:</span>
-                        <span className="font-mono text-foreground">
-                          {license.license_terms_id.slice(0, 10)}...
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-4 w-4"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(`https://aeneid.explorer.story.foundation/license-terms/${license.license_terms_id}`, '_blank');
-                          }}
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      
-                      {license.license_token_ids && license.license_token_ids.length > 0 && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <FileCheck className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">Tokens:</span>
-                          <span className="font-mono text-foreground">
-                            {license.license_token_ids.length} token(s)
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">IP ID:</span>
+                          <span className="font-mono text-primary">
+                            {dataset.ip_asset_id.slice(0, 8)}...
                           </span>
                         </div>
-                      )}
-                    </div>
-
-                    {/* Create Derivative Button */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full border-indigo-500/50 text-indigo-600 hover:bg-indigo-500/10 text-xs h-9"
-                      onClick={() => handleOpenDerivativeDialog(license)}
-                    >
-                      <GitBranch className="h-3 w-3 mr-1" />
-                      Create Derivative IP
-                    </Button>
-
-                    {/* Metadata Toggle Button */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full border-primary/30 text-primary text-xs h-8"
-                      onClick={() => toggleMetadata(license.id)}
-                      disabled={license.metadataLoading}
-                    >
-                      {license.metadataLoading ? (
-                        <>
-                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          Loading Metadata...
-                        </>
-                      ) : (
-                        <>
-                          <Info className="h-3 w-3 mr-1" />
-                          {license.showMetadata ? 'Hide' : 'Show'} IP Metadata
-                          {license.showMetadata ? (
-                            <ChevronUp className="h-3 w-3 ml-1" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3 ml-1" />
-                          )}
-                        </>
-                      )}
-                    </Button>
-
-                    {/* Metadata Display */}
-                    {license.showMetadata && license.metadata && (
-                      <div className="space-y-3 pt-3 border-t border-border">
-                        <div className="text-xs font-semibold text-primary flex items-center gap-1">
-                          <Info className="h-3 w-3" />
-                          IP Metadata Details
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">Registered:</span>
+                          <span className="font-semibold">{formatDate(dataset.registered_at)}</span>
                         </div>
+                      </div>
+                      
+                      {(dataset.revenue_share || dataset.minting_fee) && (
+                        <div className="flex gap-2 text-xs">
+                          {dataset.revenue_share && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                              {dataset.revenue_share}% Rev Share
+                            </Badge>
+                          )}
+                          {dataset.minting_fee && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                              {dataset.minting_fee} WIP
+                            </Badge>
+                          )}
+                        </div>
+                      )}
 
-                        {license.metadata.ipMetadataDetails?.description && (
-                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                            <div className="text-xs text-muted-foreground mb-1">Description</div>
-                            <div className="text-xs">{license.metadata.ipMetadataDetails.description}</div>
-                          </div>
-                        )}
-
-                        {license.metadata.ipMetadataDetails?.image && (
-                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                            <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                              <ImageIcon className="h-3 w-3" />
-                              Image
-                            </div>
-                            <img 
-                              src={license.metadata.ipMetadataDetails.image.replace('ipfs://', 'https://ipfs.io/ipfs/')} 
-                              alt="IP Asset"
-                              className="w-full h-32 object-cover rounded"
-                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                            />
-                          </div>
-                        )}
-
-                        {license.metadata.owner && (
-                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              Owner
-                            </div>
-                            <div className="text-xs font-mono break-all">{license.metadata.owner}</div>
-                          </div>
-                        )}
-
-                        {license.metadata.registrationDate && (
-                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              Registered
-                            </div>
-                            <div className="text-xs">
-                              {(() => {
-                                try {
-                                  const timestamp = typeof license.metadata.registrationDate === 'bigint' 
-                                    ? Number(license.metadata.registrationDate) 
-                                    : license.metadata.registrationDate;
-                                  const date = new Date(timestamp * 1000);
-                                  return date.toLocaleString();
-                                } catch (e) {
-                                  return 'N/A';
-                                }
-                              })()}
-                            </div>
-                          </div>
-                        )}
-
-                        {license.metadata.ipMetadataDetails?.creators && license.metadata.ipMetadataDetails.creators.length > 0 && (
-                          <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                            <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              Creators
-                            </div>
-                            {license.metadata.ipMetadataDetails.creators.map((creator, idx) => (
-                              <div key={idx} className="text-xs mb-1">
-                                <div className="flex justify-between items-center">
-                                  <span className="font-medium">{creator.name}</span>
-                                  <span className="text-muted-foreground">{creator.contributionPercent}%</span>
-                                </div>
-                                {creator.address && (
-                                  <div className="font-mono text-muted-foreground text-[10px] mt-0.5">
-                                    {creator.address}
-                                  </div>
-                                )}
-                              </div>
+                      {/* License Terms Display */}
+                      <div className="pt-2">
+                        {dataset.license_terms_ids && dataset.license_terms_ids.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {dataset.license_terms_ids.slice(0, 2).map((licenseId, idx) => (
+                              <Badge 
+                                key={idx} 
+                                variant="outline" 
+                                className="bg-blue-500/5 text-blue-600 border-blue-500/20 text-xs flex items-center gap-1"
+                              >
+                                <Tag className="h-2 w-2" />
+                                License {idx + 1}
+                                <span className="font-mono text-[10px]">
+                                  {licenseId.slice(0, 6)}...
+                                </span>
+                              </Badge>
                             ))}
+                            {dataset.license_terms_ids.length > 2 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{dataset.license_terms_ids.length - 2} more
+                              </Badge>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
-                    
-                    <div className="flex gap-2 pt-2">
-                      {license.story_explorer_tx_url && (
+
+                      {/* View IP Button - Where Create Derivative button was */}
+                      {dataset.story_explorer_url && (
                         <Button 
                           variant="outline" 
-                          size="sm"
-                          className="flex-1 border-primary/50 text-xs h-8"
-                          onClick={() => window.open(license.story_explorer_tx_url, '_blank')}
+                          className="w-full border-purple-500/50 text-purple-600 hover:bg-purple-500/10 hover:text-purple-700 text-sm h-9"
+                          onClick={() => window.open(dataset.story_explorer_url, '_blank')}
                         >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          View TX
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          View IP
                         </Button>
                       )}
-                      <Button 
-                        variant="outline" 
+
+                      {/* Metadata Toggle Button */}
+                      <Button
+                        variant="outline"
                         size="sm"
-                        className="flex-1 border-purple-500/50 text-purple-600 text-xs h-8"
-                        onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank')}
+                        className="w-full border-primary/30 text-primary text-xs h-8"
+                        onClick={() => toggleMetadata(dataset.id)}
+                        disabled={dataset.metadataLoading}
                       >
-                        <ExternalLink className="h-3 w-3 mr-1" />
-                        View IP
+                        {dataset.metadataLoading ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Loading Metadata...
+                          </>
+                        ) : (
+                          <>
+                            <Info className="h-3 w-3 mr-1" />
+                            {dataset.showMetadata ? 'Hide' : 'Show'} IP Metadata
+                            {dataset.showMetadata ? (
+                              <ChevronUp className="h-3 w-3 ml-1" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3 ml-1" />
+                            )}
+                          </>
+                        )}
                       </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+
+                      {/* Metadata Display */}
+                      {dataset.showMetadata && dataset.metadata && (
+                        <div className="space-y-3 pt-3 border-t border-border">
+                          <div className="text-xs font-semibold text-primary flex items-center gap-1">
+                            <Info className="h-3 w-3" />
+                            IP Metadata Details
+                          </div>
+
+                          {dataset.metadata.ipMetadataDetails?.description && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-1">Description</div>
+                              <div className="text-xs">{dataset.metadata.ipMetadataDetails.description}</div>
+                            </div>
+                          )}
+
+                          {dataset.metadata.ipMetadataDetails?.image && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                                <ImageIcon className="h-3 w-3" />
+                                Image
+                              </div>
+                              <img 
+                                src={dataset.metadata.ipMetadataDetails.image.replace('ipfs://', 'https://ipfs.io/ipfs/')} 
+                                alt="IP Asset"
+                                className="w-full h-32 object-cover rounded"
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                              />
+                            </div>
+                          )}
+
+                          {dataset.metadata.owner && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                Owner
+                              </div>
+                              <div className="text-xs font-mono break-all">{dataset.metadata.owner}</div>
+                            </div>
+                          )}
+
+                          {dataset.metadata.registrationDate && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                Registered
+                              </div>
+                              <div className="text-xs">
+                                {(() => {
+                                  try {
+                                    const timestamp = typeof dataset.metadata.registrationDate === 'bigint' 
+                                      ? Number(dataset.metadata.registrationDate) 
+                                      : dataset.metadata.registrationDate;
+                                    const date = new Date(timestamp * 1000);
+                                    return date.toLocaleString();
+                                  } catch (e) {
+                                    return 'N/A';
+                                  }
+                                })()}
+                              </div>
+                            </div>
+                          )}
+
+                          {dataset.metadata.ipMetadataDetails?.creators && dataset.metadata.ipMetadataDetails.creators.length > 0 && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                Creators
+                              </div>
+                              {dataset.metadata.ipMetadataDetails.creators.map((creator, idx) => (
+                                <div key={idx} className="text-xs mb-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-medium">{creator.name}</span>
+                                    <span className="text-muted-foreground">{creator.contributionPercent}%</span>
+                                  </div>
+                                  {creator.address && (
+                                    <div className="font-mono text-muted-foreground text-[10px] mt-0.5">
+                                      {creator.address}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Create Derivative Button - At Bottom (like Mint License button) */}
+                      <div className="pt-2">
+                        <Button
+                          onClick={() => handleOpenDerivativeDialog(dataset)}
+                          disabled={!dataset.license_terms_ids || dataset.license_terms_ids.length === 0}
+                          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 font-semibold text-sm h-10 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all"
+                        >
+                          <GitBranch className="h-4 w-4 mr-2" />
+                          Create Derivative
+                          {(!dataset.license_terms_ids || dataset.license_terms_ids.length === 0) && (
+                            <span className="ml-2 text-xs text-amber-300">(No licenses)</span>
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              
+              <div className="mt-12 pt-8 border-t border-border">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-4xl mx-auto text-center">
+                  <div>
+                    <p className="text-3xl font-bold gradient-text">{datasets.length}</p>
+                    <p className="text-sm text-muted-foreground">Total Datasets</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-bold gradient-text">
+                      {new Set(datasets.map(d => d.type)).size}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Sensor Types</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-bold gradient-text">
+                      {datasets.filter(d => d.license_terms_ids && d.license_terms_ids.length > 0).length}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Licensable</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-bold gradient-text">
+                      {new Set(datasets.map(d => d.creator_address.slice(0, 10) + '...')).size}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Creators</p>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </div>
         
         <div className="absolute top-1/3 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-float"></div>
-        <div className="absolute bottom-1/3 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-float" style={{animationDelay: '3s'}}></div>
+        <div className="absolute bottom-1/3 right-10 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl animate-float" style={{animationDelay: '3s'}}></div>
       </div>
     </div>
   );
