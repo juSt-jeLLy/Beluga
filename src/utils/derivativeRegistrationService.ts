@@ -10,8 +10,18 @@ import {
   getJSONHash, 
   getStringHash 
 } from './uploadToIpfs';
-import { generateCharacterFileForSensorData } from './generateCharacterFile';
 import { SupabaseService } from '@/services/supabaseService';
+import { 
+  generateResearchPaper, 
+  exportPaperAsJSON,
+  type IPMetadataFromCore 
+} from './paperGenerationService';
+import { 
+  generateEnhancedDerivativeMetadata,
+  validateDerivativeMetadataParams,
+  createMetadataSummary,
+  type DerivativeMetadataParams 
+} from './derivativeMetadataService';
 
 export interface DerivativeRegistrationParams {
   sensorData: SensorData;
@@ -23,6 +33,7 @@ export interface DerivativeRegistrationParams {
   royaltyRecipient?: Address;
   royaltyPercentage?: number;
   maxMintingFee?: number;
+  sensorDataRecord?: any; // Full sensor data record from database
 }
 
 export interface DerivativeRegistrationResult {
@@ -35,14 +46,14 @@ export interface DerivativeRegistrationResult {
   metadataUrl?: string;
   nftTokenId?: string;
   nftContractAddress?: string;
-  characterFileUrl?: string;
-  characterFileHash?: string;
+  paperFileUrl?: string; // Changed from characterFileUrl
+  paperFileHash?: string; // Changed from characterFileHash
   imageUrl?: string;
   imageHash?: string;
 }
 
 /**
- * Register sensor data as a derivative IP Asset
+ * Register sensor data as a derivative IP Asset with research paper
  * This mints a new NFT and registers it as derivative of a parent IP
  */
 export async function registerSensorDataAsDerivativeIP(
@@ -60,35 +71,113 @@ export async function registerSensorDataAsDerivativeIP(
       royaltyRecipient,
       royaltyPercentage,
       maxMintingFee,
+      sensorDataRecord,
     } = params;
     
     // Create Story client with wallet
     const client = createStoryClient(walletClient);
     
-    // 1. Generate character file for AI metadata
-    const characterFile = generateCharacterFileForSensorData(sensorData, location);
-    const characterFileContent = JSON.stringify(characterFile, null, 2);
+    // 1. Generate research paper instead of character file
+    console.log('Generating research paper for derivative IP...');
     
-    // Upload character file to IPFS
-    const characterFileHash = await uploadFileToIPFS(
-      characterFileContent, 
-      `${sensorData.type}-${location}-derivative-character.json`
+    // Create metadata structure for paper generation
+    const ipMetadataForPaper: IPMetadataFromCore = {
+      ipId: parentIpId, // Parent IP ID for reference
+      title: sensorData.title,
+      description: `${location} - ${sensorData.type} sensor data`,
+      creators: [
+        {
+          name: creatorName,
+          address: creatorAddress,
+          contributionPercent: 100,
+        },
+      ],
+      createdAt: new Date(sensorData.timestamp).getTime().toString(),
+      image: sensorData.imageHash ? `https://ipfs.io/ipfs/${sensorData.imageHash}` : undefined,
+      imageHash: sensorData.imageHash,
+    };
+    
+    // Use sensorDataRecord if provided, otherwise create from sensorData
+    const recordForPaper = sensorDataRecord || {
+      id: 0,
+      type: sensorData.type,
+      title: sensorData.title,
+      data: sensorData.data,
+      location: location,
+      timestamp: sensorData.timestamp,
+      sensor_health: sensorData.sensorHealth,
+      source: 'gmail' as const,
+      creator_address: creatorAddress,
+      image_hash: sensorData.imageHash,
+    };
+    
+    // Generate the research paper
+    const researchPaper = await generateResearchPaper(recordForPaper, ipMetadataForPaper);
+    const paperJSON = exportPaperAsJSON(researchPaper);
+    
+    console.log('Research paper generated successfully');
+    
+    // Upload research paper to IPFS
+    const paperFileHash = await uploadFileToIPFS(
+      paperJSON, 
+      `${sensorData.type}-${location}-derivative-paper.json`
     );
-    const characterFileUrl = `https://ipfs.io/ipfs/${characterFileHash}`;
+    const paperFileUrl = `https://ipfs.io/ipfs/${paperFileHash}`;
     
-    // Get hash of character file
-    const characterFileHashHex = await getStringHash(characterFileContent);
+    console.log('Research paper uploaded to IPFS:', paperFileUrl);
     
-    // 2. Use image hash from sensor data
+    // Get hash of paper file
+    const paperFileHashHex = await getStringHash(paperJSON);
+    
+    // 2. Generate derivative metadata using the new service
+    console.log('Generating derivative metadata...');
+    
+    const metadataParams: DerivativeMetadataParams = {
+      originalTitle: sensorData.title,
+      sensorType: sensorData.type,
+      location: location,
+      timestamp: sensorData.timestamp,
+      sensorHealth: sensorData.sensorHealth,
+      parentIpId: parentIpId,
+      rawData: sensorData.data,
+      creatorName: creatorName,
+      creatorAddress: creatorAddress,
+      parentCreatorAddress: sensorDataRecord?.creator_address as Address | undefined,
+      imageHash: sensorData.imageHash,
+      dataSource: sensorDataRecord?.source,
+      registrationDate: new Date().toISOString(),
+    };
+    
+    // Validate metadata parameters
+    const validation = validateDerivativeMetadataParams(metadataParams);
+    if (!validation.valid) {
+      console.error('Metadata validation failed:', validation.errors);
+      throw new Error(`Invalid metadata parameters: ${validation.errors.join(', ')}`);
+    }
+    
+    // Generate enhanced metadata
+    const { ipMetadata: derivativeIPMeta, nftMetadata: derivativeNFTMeta, displaySensorType } = 
+      generateEnhancedDerivativeMetadata(metadataParams);
+    
+    console.log('Derivative metadata generated:');
+    console.log('Title:', derivativeIPMeta.title);
+    console.log('Description preview:', derivativeIPMeta.description.substring(0, 200) + '...');
+    console.log('Description length:', derivativeIPMeta.description.length, 'characters');
+    console.log('NFT attributes count:', derivativeNFTMeta.attributes.length);
+    console.log(createMetadataSummary(derivativeIPMeta, derivativeNFTMeta));
+    
+    // 3. Use image hash from sensor data
     const finalImageUrl = `https://ipfs.io/ipfs/${sensorData.imageHash}`;
     const imageHash = sensorData.imageHash.startsWith('0x') 
       ? sensorData.imageHash as `0x${string}`
       : `0x${sensorData.imageHash}` as `0x${string}`;    
     
-    // 3. Create IP Metadata with AI metadata
+    // 4. Create IP Metadata with research paper as AI metadata and derivative-specific content
+    console.log('Creating IP Metadata with enhanced derivative information...');
+    
     const ipMetadata: IpMetadata = client.ipAsset.generateIpMetadata({
-      title: sensorData.title,
-      description: `${location} - ${sensorData.type} sensor data: ${sensorData.data}`,
+      title: derivativeIPMeta.title,
+      description: derivativeIPMeta.description,
       createdAt: new Date(sensorData.timestamp).getTime().toString(),
       creators: [
         {
@@ -104,51 +193,47 @@ export async function registerSensorDataAsDerivativeIP(
       mediaType: 'image/svg+xml',
       // Add AI metadata
       aiMetadata: {
-        characterFileUrl: characterFileUrl,
-        characterFileHash: characterFileHashHex,
+        characterFileUrl: paperFileUrl, // Store paper URL in characterFileUrl field
+        characterFileHash: paperFileHashHex,
       },
     });
     
-    // 4. Create NFT Metadata
+    console.log('IP Metadata created with title:', derivativeIPMeta.title);
+    console.log('Description length:', derivativeIPMeta.description.length, 'characters');
+    console.log('IP Metadata description preview:', ipMetadata.description?.substring(0, 200) + '...');
+    console.log('Metadata object keys:', Object.keys(ipMetadata));
+    
+    // Verify the metadata contains all our enhanced information
+    if (ipMetadata.description && ipMetadata.description.includes('## Derivative Agricultural Data Analysis')) {
+      console.log('✅ Enhanced description successfully included in IP Metadata');
+    } else {
+      console.warn('⚠️ Enhanced description may have been modified by Story Protocol SDK');
+      console.log('Actual description:', ipMetadata.description);
+    }
+    
+    // 5. Create NFT Metadata using derivative metadata service
     const nftMetadata = {
-      name: sensorData.title,
-      description: `Agricultural IoT Sensor Data - ${sensorData.type} from ${location}. This NFT represents ownership of the IP Asset for this sensor data.`,
+      name: derivativeNFTMeta.name,
+      description: derivativeNFTMeta.description,
       image: finalImageUrl,
-      attributes: [
-        {
-          trait_type: 'Sensor Type',
-          value: sensorData.type,
-        },
-        {
-          trait_type: 'Location',
-          value: location,
-        },
-        {
-          trait_type: 'Sensor Health',
-          value: sensorData.sensorHealth,
-        },
-        {
-          trait_type: 'Timestamp',
-          value: sensorData.timestamp,
-        },
-        {
-          trait_type: 'Data Source',
-          value: 'Agricultural IoT Network',
-        },
-        {
-          trait_type: 'Derivative Type',
-          value: 'Derivative IP Asset',
-        },
-      ],
+      attributes: derivativeNFTMeta.attributes,
     };
     
-    // 5. Upload metadata to IPFS
+    console.log('NFT Metadata created with', nftMetadata.attributes.length, 'attributes');
+    
+    // 6. Upload metadata to IPFS
+    console.log('Uploading metadata to IPFS...');
     const ipIpfsHash = await uploadJSONToIPFS(ipMetadata);
     const ipHash = await getJSONHash(ipMetadata);
     const nftIpfsHash = await uploadJSONToIPFS(nftMetadata);
     const nftHash = await getJSONHash(nftMetadata);
     
-    // 6. Prepare royalty shares if specified
+    console.log('Metadata uploaded to IPFS:', {
+      ipMetadata: `https://ipfs.io/ipfs/${ipIpfsHash}`,
+      nftMetadata: `https://ipfs.io/ipfs/${nftIpfsHash}`
+    });
+    
+    // 7. Prepare royalty shares if specified
     const royaltyShares = (royaltyRecipient && royaltyPercentage) ? [
       {
         recipient: royaltyRecipient,
@@ -161,7 +246,9 @@ export async function registerSensorDataAsDerivativeIP(
       ? parseEther(String(maxMintingFee))
       : 0n;
     
-    // 8. Register Derivative IP Asset
+    console.log('Registering derivative IP on blockchain...');
+    
+    // 9. Register Derivative IP Asset
     const response = await client.ipAsset.registerDerivativeIpAsset({
       nft: { 
         type: 'mint', 
@@ -183,7 +270,9 @@ export async function registerSensorDataAsDerivativeIP(
       },
     });
     
-    // 9. Generate Story Explorer URL
+    console.log('Derivative IP registered successfully:', response.ipId);
+    
+    // 10. Generate Story Explorer URL
     const storyExplorerUrl = `${networkInfo.protocolExplorer}/ipa/${response.ipId}`;
     
     return {
@@ -195,8 +284,8 @@ export async function registerSensorDataAsDerivativeIP(
       metadataUrl: `https://ipfs.io/ipfs/${ipIpfsHash}`,
       nftTokenId: response.tokenId?.toString(),
       nftContractAddress: SPGNFTContractAddress,
-      characterFileUrl: characterFileUrl,
-      characterFileHash: characterFileHashHex,
+      paperFileUrl: paperFileUrl, // Changed from characterFileUrl
+      paperFileHash: paperFileHashHex, // Changed from characterFileHash
       imageUrl: finalImageUrl,
       imageHash: sensorData.imageHash,
     };
@@ -216,7 +305,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
   const { address } = useAccount();
   
   /**
-   * Register new derivative IP from sensor data
+   * Register new derivative IP from sensor data with research paper
    */
   const registerDerivativeIP = async (
     sensorData: SensorData,
@@ -237,7 +326,38 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
     }
     
     try {
-      // 1. Register derivative IP on Story Protocol
+      // Fetch full sensor data record from database if ID is provided
+      let sensorDataRecord = null;
+      if (sensorDataId && supabaseService) {
+        console.log('Fetching sensor data record for ID:', sensorDataId);
+        
+        // Fetch all sensor data and find the matching record
+        const result = await supabaseService.fetchSensorData({
+          has_ip_registration: true
+        });
+        
+        if (result.success && result.data) {
+          sensorDataRecord = result.data.find(record => record.id === sensorDataId);
+          
+          if (sensorDataRecord) {
+            console.log('Found sensor data record:', {
+              id: sensorDataRecord.id,
+              title: sensorDataRecord.title,
+              type: sensorDataRecord.type,
+              location: sensorDataRecord.location,
+              ip_asset_id: sensorDataRecord.ip_asset_id
+            });
+          } else {
+            console.warn('Sensor data record not found for ID:', sensorDataId);
+          }
+        } else {
+          console.warn('Failed to fetch sensor data:', result.error);
+        }
+      } else {
+        console.log('No sensor data ID or supabase service available');
+      }
+      
+      // 1. Register derivative IP on Story Protocol with research paper
       const registrationResult = await registerSensorDataAsDerivativeIP(
         {
           sensorData,
@@ -249,6 +369,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
           royaltyRecipient: royaltyRecipient || address,
           royaltyPercentage,
           maxMintingFee,
+          sensorDataRecord, // Pass the full record for paper generation
         },
         walletClient
       );
@@ -256,8 +377,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
       // 2. Save to database if successful
       if (registrationResult.success && sensorDataId && supabaseService) {
         try {
-
-          // Second, save to derivative_ip_assets table
+          // Save to derivative_ip_assets table
           const derivativeDataResult = await supabaseService.saveDerivativeIPRegistration({
             sensor_data_id: sensorDataId,
             derivative_ip_id: registrationResult.ipId!,
@@ -273,32 +393,29 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
             transaction_hash: registrationResult.txHash!,
             story_explorer_url: registrationResult.storyExplorerUrl,
             metadata_url: registrationResult.metadataUrl,
-            character_file_url: registrationResult.characterFileUrl,
-            character_file_hash: registrationResult.characterFileHash,
+            character_file_url: registrationResult.paperFileUrl, // Store paper URL
+            character_file_hash: registrationResult.paperFileHash, // Store paper hash
             nft_token_id: registrationResult.nftTokenId,
             nft_contract_address: registrationResult.nftContractAddress,
-            nft_metadata_url: registrationResult.metadataUrl, // Using same as IP metadata
+            nft_metadata_url: registrationResult.metadataUrl,
             image_url: registrationResult.imageUrl,
             image_hash: registrationResult.imageHash,
           });
           
           if (!derivativeDataResult.success) {
             console.error('Failed to save derivative IP data to database:', derivativeDataResult.error);
-            // Note: We don't fail the whole operation if DB save fails
-            // The blockchain registration was successful
           } else {
-            console.log('✅ Derivative IP registration data saved to database successfully');
+            console.log('✅ Derivative IP with research paper saved to database successfully');
             console.log('Database Record ID:', derivativeDataResult.data?.id);
           }
           
         } catch (dbError: any) {
           console.error('Database save error:', dbError);
-          // Don't fail the operation - blockchain registration succeeded
         }
       } else if (registrationResult.success && !sensorDataId) {
-        console.warn('⚠️ Derivative IP registered on blockchain but no sensor_data_id provided for database save');
+        console.warn('⚠️ Derivative IP registered but no sensor_data_id provided for database save');
       } else if (registrationResult.success && !supabaseService) {
-        console.warn('⚠️ Derivative IP registered on blockchain but no supabaseService provided for database save');
+        console.warn('⚠️ Derivative IP registered but no supabaseService provided for database save');
       }
       
       return registrationResult;
