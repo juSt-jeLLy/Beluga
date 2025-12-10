@@ -256,22 +256,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
       // 2. Save to database if successful
       if (registrationResult.success && sensorDataId && supabaseService) {
         try {
-          // First, update the sensor_data table with IP registration info
-          const sensorDataUpdateResult = await supabaseService.saveIPRegistrationData(
-            sensorDataId,
-            {
-              creator_address: address,
-              ip_asset_id: registrationResult.ipId!,
-              story_explorer_url: registrationResult.storyExplorerUrl!,
-              transaction_hash: registrationResult.txHash,
-              metadata_url: registrationResult.metadataUrl,
-            }
-          );
-          
-          if (!sensorDataUpdateResult.success) {
-            console.warn('Failed to update sensor_data with IP registration:', sensorDataUpdateResult.error);
-          }
-          
+
           // Second, save to derivative_ip_assets table
           const derivativeDataResult = await supabaseService.saveDerivativeIPRegistration({
             sensor_data_id: sensorDataId,

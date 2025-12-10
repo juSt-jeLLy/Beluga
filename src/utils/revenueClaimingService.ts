@@ -28,6 +28,13 @@ export interface ClaimRevenueResult {
   error?: string;
 }
 
+// New interface for claiming revenue from derivatives
+export interface ClaimRevenueFromDerivativesParams {
+  ancestorIpId: Address;
+  claimer: Address;
+  childIpIds: Address[];
+}
+
 /**
  * Fetch claimable revenue for an IP asset
  */
@@ -96,6 +103,54 @@ export async function claimRevenue(
     return {
       success: false,
       error: error.message || 'Failed to claim revenue',
+    };
+  }
+}
+
+/**
+ * Claim revenue from specific child IPs (derivatives)
+ * This is for parent IPs to claim revenue from their derivatives
+ */
+export async function claimRevenueFromDerivatives(
+  params: ClaimRevenueFromDerivativesParams,
+  walletClient: any
+): Promise<ClaimRevenueResult> {
+  try {
+    const { ancestorIpId, claimer, childIpIds } = params;
+    
+    // Create Story client with wallet
+    const client = createStoryClient(walletClient);
+    
+    // Define the royalty policy address (you might need to fetch this from your database)
+    const ROYALTY_POLICY_ADDRESS = "0xBe54FB168b3c982b7AaE60dB6CF75Bd8447b390E"; // Example from your code
+    
+    console.log('Claiming revenue from derivatives:', {
+      ancestorIpId,
+      claimer,
+      childIpIds,
+      childCount: childIpIds.length
+    });
+    
+    // Claim revenue from specific child IPs
+    const claim = await client.royalty.claimAllRevenue({
+      ancestorIpId: ancestorIpId,
+      claimer: claimer, // The parent IP address
+      currencyTokens: [WIP_TOKEN_ADDRESS],
+      childIpIds: childIpIds, // Array of derivative IP IDs
+      royaltyPolicies: Array(childIpIds.length).fill(ROYALTY_POLICY_ADDRESS),
+    });
+    
+    return {
+      success: true,
+      txHashes: claim.txHashes || [],
+      claimedTokens: claim.claimedTokens?.map(token => token.toString()) || [],
+    };
+    
+  } catch (error: any) {
+    console.error('Claim Revenue from Derivatives Error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to claim revenue from derivatives',
     };
   }
 }
@@ -192,6 +247,56 @@ export function useRevenueClaiming() {
   return {
     claimRevenue: claimRevenueForIP,
     claiming,
+    isConnected: !!walletClient && !!address,
+  };
+}
+
+/**
+ * Hook to claim revenue from derivatives
+ */
+export function useRevenueClaimingFromDerivatives() {
+  const { data: walletClient } = useWalletClient();
+  const { address } = useAccount();
+  const [claimingFromDerivatives, setClaimingFromDerivatives] = useState(false);
+
+  const claimRevenueFromDerivativesForIP = async (
+    ancestorIpId: Address,
+    childIpIds: Address[]
+  ): Promise<ClaimRevenueResult> => {
+    if (!walletClient || !address) {
+      return {
+        success: false,
+        error: 'Wallet not connected',
+      };
+    }
+
+    setClaimingFromDerivatives(true);
+
+    try {
+      const result = await claimRevenueFromDerivatives(
+        { 
+          ancestorIpId, 
+          claimer: ancestorIpId, // Use the IP ID as claimer
+          childIpIds 
+        },
+        walletClient
+      );
+
+      return result;
+    } catch (error: any) {
+      console.error('Claim revenue from derivatives process error:', error);
+      return {
+        success: false,
+        error: error.message || 'Revenue claim from derivatives failed',
+      };
+    } finally {
+      setClaimingFromDerivatives(false);
+    }
+  };
+
+  return {
+    claimRevenueFromDerivatives: claimRevenueFromDerivativesForIP,
+    claimingFromDerivatives,
     isConnected: !!walletClient && !!address,
   };
 }
