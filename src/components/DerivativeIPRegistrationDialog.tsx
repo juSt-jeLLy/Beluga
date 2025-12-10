@@ -179,6 +179,7 @@ export default function DerivativeIPRegistrationDialog({
   const [creatorName, setCreatorName] = useState('');
   const [royaltyRecipient, setRoyaltyRecipient] = useState('');
   const [royaltyPercentage, setRoyaltyPercentage] = useState('10');
+  const [maxMintingFee, setMaxMintingFee] = useState('0.01');
   const [isRegistering, setIsRegistering] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   
@@ -234,6 +235,16 @@ export default function DerivativeIPRegistrationDialog({
       return;
     }
 
+    const mintingFeeNum = parseFloat(maxMintingFee);
+    if (isNaN(mintingFeeNum) || mintingFeeNum < 0) {
+      toast({
+        title: 'Invalid Minting Fee',
+        description: 'Minting fee must be a positive number',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!isConnected) {
       toast({
         title: 'Wallet Not Connected',
@@ -271,6 +282,7 @@ export default function DerivativeIPRegistrationDialog({
         BigInt(licenseTermsId),
         royaltyRecipient.trim() ? royaltyRecipient.trim() as Address : undefined,
         percentageNum,
+        mintingFeeNum,
         sensorDataId
       );
 
@@ -291,6 +303,7 @@ export default function DerivativeIPRegistrationDialog({
         setCreatorName('');
         setRoyaltyRecipient('');
         setRoyaltyPercentage('10');
+        setMaxMintingFee('0.01');
       } else {
         toast({
           title: 'Registration Failed',
@@ -316,6 +329,7 @@ export default function DerivativeIPRegistrationDialog({
       setCreatorName('');
       setRoyaltyRecipient('');
       setRoyaltyPercentage('10');
+      setMaxMintingFee('0.01');
       onOpenChange(false);
     }
   };
@@ -418,7 +432,7 @@ export default function DerivativeIPRegistrationDialog({
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-primary">
                   <Coins className="h-4 w-4" />
-                  Royalty Configuration
+                  Derivative Configuration
                 </div>
                 
                 <div className="space-y-2">
@@ -437,26 +451,49 @@ export default function DerivativeIPRegistrationDialog({
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="royalty-percentage" className="text-xs font-semibold">
-                    Royalty Percentage
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="royalty-percentage"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={royaltyPercentage}
-                      onChange={(e) => setRoyaltyPercentage(e.target.value)}
-                      className="h-11 border-2 border-primary/20 focus:border-primary pr-8"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="royalty-percentage" className="text-xs font-semibold">
+                      Royalty %
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="royalty-percentage"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={royaltyPercentage}
+                        onChange={(e) => setRoyaltyPercentage(e.target.value)}
+                        className="h-11 border-2 border-primary/20 focus:border-primary pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Revenue share
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Percentage of royalties for recipient
-                  </p>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="max-minting-fee" className="text-xs font-semibold">
+                      Max Minting Fee
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="max-minting-fee"
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={maxMintingFee}
+                        onChange={(e) => setMaxMintingFee(e.target.value)}
+                        className="h-11 border-2 border-primary/20 focus:border-primary pr-12"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">WIP</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Maximum fee
+                    </p>
+                  </div>
                 </div>
               </div>
 

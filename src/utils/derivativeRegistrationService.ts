@@ -1,6 +1,6 @@
 // derivativeRegistrationService.ts
 import { IpMetadata } from '@story-protocol/core-sdk';
-import { Address } from 'viem';
+import { Address, parseEther } from 'viem';
 import { useWalletClient, useAccount } from 'wagmi';
 import { SensorData } from '@/services/gmailService';
 import { createStoryClient, SPGNFTContractAddress, networkInfo } from './config';
@@ -22,6 +22,7 @@ export interface DerivativeRegistrationParams {
   parentLicenseTermsId: bigint | number;
   royaltyRecipient?: Address;
   royaltyPercentage?: number;
+  maxMintingFee?: number;
 }
 
 export interface DerivativeRegistrationResult {
@@ -58,6 +59,7 @@ export async function registerSensorDataAsDerivativeIP(
       parentLicenseTermsId,
       royaltyRecipient,
       royaltyPercentage,
+      maxMintingFee,
     } = params;
     
     // Create Story client with wallet
@@ -154,7 +156,12 @@ export async function registerSensorDataAsDerivativeIP(
       }
     ] : undefined;
     
-    // 7. Register Derivative IP Asset
+    // 7. Convert maxMintingFee to Wei if provided, otherwise set to 0 (no limit)
+    const finalMaxMintingFee = maxMintingFee !== undefined 
+      ? parseEther(String(maxMintingFee))
+      : 0n;
+    
+    // 8. Register Derivative IP Asset
     const response = await client.ipAsset.registerDerivativeIpAsset({
       nft: { 
         type: 'mint', 
@@ -163,7 +170,7 @@ export async function registerSensorDataAsDerivativeIP(
       derivData: {
         parentIpIds: [parentIpId],
         licenseTermsIds: [parentLicenseTermsId],
-        maxMintingFee: 0n, // No limit
+        maxMintingFee: finalMaxMintingFee,
         maxRevenueShare: 100, // 100%
         maxRts: 100_000_000, // Max royalty tokens
       },
@@ -176,7 +183,7 @@ export async function registerSensorDataAsDerivativeIP(
       },
     });
     
-    // 8. Generate Story Explorer URL
+    // 9. Generate Story Explorer URL
     const storyExplorerUrl = `${networkInfo.protocolExplorer}/ipa/${response.ipId}`;
     
     return {
@@ -219,6 +226,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
     parentLicenseTermsId: bigint | number,
     royaltyRecipient?: Address,
     royaltyPercentage?: number,
+    maxMintingFee?: number,
     sensorDataId?: number
   ): Promise<DerivativeRegistrationResult> => {
     if (!walletClient || !address) {
@@ -240,6 +248,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
           parentLicenseTermsId,
           royaltyRecipient: royaltyRecipient || address,
           royaltyPercentage,
+          maxMintingFee,
         },
         walletClient
       );
@@ -273,7 +282,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
             creator_address: address,
             royalty_recipient: royaltyRecipient || address,
             royalty_percentage: royaltyPercentage,
-            max_minting_fee: 0, // As set in registration
+            max_minting_fee: maxMintingFee || 0,
             max_revenue_share: 100, // As set in registration
             max_rts: 100_000_000, // As set in registration
             transaction_hash: registrationResult.txHash!,
