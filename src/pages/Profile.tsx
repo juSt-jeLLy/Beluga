@@ -26,7 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
   User,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ArrowRightLeft // Added for royalty payment
 } from "lucide-react";
 import { useAccount } from "wagmi";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +38,8 @@ import { Address } from "viem";
 import { ClaimRevenueDialog } from "@/components/ClaimRevenueDialog";
 import { getEnrichedMetadata, type EnrichedIPMetadata } from "@/utils/coreMetadataViewService";
 import { createClient } from '@supabase/supabase-js';
+import { useRoyaltyPayment } from "@/utils/royaltyPaymentService"; // Added import
+import { PayRoyaltyDialog } from "@/components/PayRoyaltyDialog"; // Added import
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -332,6 +335,14 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
   const { claimRevenue, claiming } = useRevenueClaiming();
   const { toast } = useToast();
   
+  // Add royalty payment state
+  const { payRoyalty, paying: payingRoyalty, isConnected: isRoyaltyConnected } = useRoyaltyPayment();
+  const [royaltyDialogOpen, setRoyaltyDialogOpen] = useState(false);
+  const [royaltySuccess, setRoyaltySuccess] = useState(false);
+  const [royaltyTxHash, setRoyaltyTxHash] = useState<string>("");
+  const [royaltyAmount, setRoyaltyAmount] = useState<string>("");
+  const [royaltyError, setRoyaltyError] = useState<string>("");
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState(false);
   const [claimTxHash, setClaimTxHash] = useState<string>("");
@@ -381,6 +392,51 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
         setClaimSuccess(false);
         setClaimError("");
         setClaimTxHash("");
+      }, 300);
+    }
+  };
+
+  // Handle royalty payment
+  const handlePayRoyalty = async (amount: string) => {
+    setRoyaltySuccess(false);
+    setRoyaltyError("");
+    setRoyaltyTxHash("");
+    setRoyaltyAmount(amount);
+    
+    try {
+      const result = await payRoyalty(
+        derivative.parent_ip_id as Address, // receiverIpId = parent IP ID
+        derivative.derivative_ip_id as Address, // payerIpId = derivative IP ID
+        amount // amount in WIP
+      );
+      
+      if (result.success) {
+        setRoyaltyTxHash(result.txHash || "");
+        setRoyaltySuccess(true);
+        
+        toast({
+          title: "Royalty Paid",
+          description: `Successfully paid ${amount} WIP to parent IP`,
+        });
+      } else {
+        setRoyaltyError(result.error || "Failed to pay royalty");
+        setRoyaltySuccess(false);
+      }
+    } catch (error: any) {
+      console.error('Royalty payment error:', error);
+      setRoyaltyError(error.message || "An unexpected error occurred");
+      setRoyaltySuccess(false);
+    }
+  };
+
+  const handleRoyaltyDialogClose = (open: boolean) => {
+    setRoyaltyDialogOpen(open);
+    if (!open) {
+      setTimeout(() => {
+        setRoyaltySuccess(false);
+        setRoyaltyError("");
+        setRoyaltyTxHash("");
+        setRoyaltyAmount("");
       }, 300);
     }
   };
@@ -452,9 +508,15 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
             {derivative.parent_title && (
               <p className="text-sm text-muted-foreground">{derivative.parent_title}</p>
             )}
+            {derivative.royalty_percentage && (
+              <p className="text-xs text-purple-600 mt-1">
+                Royalty Rate: {derivative.royalty_percentage}%
+              </p>
+            )}
           </div>
           
-          <div className="flex gap-2 pt-4 border-t border-border">
+          <div className="flex gap-2 pt-4 border-t border-border flex-wrap">
+            {/* Claim Revenue Button */}
             <Button 
               size="sm" 
               variant="outline"
@@ -475,6 +537,28 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
               )}
             </Button>
             
+            {/* Pay Royalty Button */}
+            <Button 
+              size="sm" 
+              variant="outline"
+              className="border-purple-500/50 text-purple-600 hover:bg-purple-500/10"
+              onClick={() => setRoyaltyDialogOpen(true)}
+              disabled={payingRoyalty}
+            >
+              {payingRoyalty ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Paying...
+                </>
+              ) : (
+                <>
+                  <ArrowRightLeft className="h-3 w-3 mr-1" />
+                  Pay Royalty to Parent
+                </>
+              )}
+            </Button>
+            
+            {/* View Derivative Button */}
             {derivative.story_explorer_url && (
               <Button 
                 size="sm" 
@@ -487,10 +571,11 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
               </Button>
             )}
             
+            {/* View Parent IP Button */}
             <Button 
               size="sm" 
               variant="outline" 
-              className="border-purple-500/50 text-purple-600"
+              className="border-purple-500/50 text-purple-600 hover:bg-purple-500/10"
               onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${derivative.parent_ip_id}`, '_blank')}
             >
               <ExternalLink className="h-3 w-3 mr-1" />
@@ -500,6 +585,7 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
         </CardContent>
       </Card>
 
+      {/* Claim Revenue Dialog */}
       <ClaimRevenueDialog
         open={dialogOpen}
         onOpenChange={handleDialogClose}
@@ -511,6 +597,23 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
         ipAssetId={derivative.derivative_ip_id}
         error={claimError}
         isDerivative={true}
+      />
+
+      {/* Pay Royalty Dialog */}
+      <PayRoyaltyDialog
+        open={royaltyDialogOpen}
+        onOpenChange={handleRoyaltyDialogClose}
+        paying={payingRoyalty}
+        success={royaltySuccess}
+        txHash={royaltyTxHash}
+        amount={royaltyAmount}
+        parentTitle={derivative.parent_title || 'Parent Dataset'}
+        parentIpId={derivative.parent_ip_id}
+        derivativeTitle={derivative.derivative_title}
+        derivativeIpId={derivative.derivative_ip_id}
+        error={royaltyError}
+        onPayRoyalty={handlePayRoyalty}
+        maxAmount="100" // You can adjust this based on your needs or fetch from the license terms
       />
     </>
   );
