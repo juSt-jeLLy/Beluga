@@ -1,6 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, ExternalLink, Coins, Zap, Loader2, TrendingUp } from "lucide-react";
+import { CheckCircle, ExternalLink, Coins, Zap, Loader2, TrendingUp, AlertCircle } from "lucide-react";
 
 interface ClaimRevenueDialogProps {
   open: boolean;
@@ -12,6 +12,7 @@ interface ClaimRevenueDialogProps {
   datasetTitle: string;
   ipAssetId: string;
   error?: string;
+  isDerivative?: boolean; // Added this prop
 }
 
 export const ClaimRevenueDialog = ({
@@ -24,10 +25,16 @@ export const ClaimRevenueDialog = ({
   datasetTitle,
   ipAssetId,
   error,
+  isDerivative = false, // Default to false
 }: ClaimRevenueDialogProps) => {
   
   // Construct Story Explorer URL using the transaction hash
   const storyExplorerUrltx = txHash ? `https://aeneid.storyscan.io/tx/${txHash}` : '';
+  
+  // Get appropriate labels based on whether it's a derivative
+  const getAssetTypeLabel = () => isDerivative ? "DERIVATIVE" : "DATASET";
+  const getAssetTypeName = () => isDerivative ? "Derivative" : "Dataset";
+  const getIpAssetLabel = () => isDerivative ? "DERIVATIVE IP ID" : "IP ASSET ID";
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,7 +76,7 @@ export const ClaimRevenueDialog = ({
                     Revenue Claimed! 🎉
                   </h3>
                   <p className="text-muted-foreground">
-                    Your revenue has been successfully claimed
+                    Your revenue has been successfully claimed from {getAssetTypeName().toLowerCase()}
                   </p>
                 </div>
               </>
@@ -80,7 +87,7 @@ export const ClaimRevenueDialog = ({
                 <div className="relative">
                   <div className="absolute inset-0 bg-red-500 rounded-full blur-2xl opacity-30 animate-pulse"></div>
                   <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-                    <Zap className="h-16 w-16 text-white" />
+                    <AlertCircle className="h-16 w-16 text-white" />
                   </div>
                 </div>
                 
@@ -89,7 +96,7 @@ export const ClaimRevenueDialog = ({
                     Claim Failed
                   </h3>
                   <p className="text-muted-foreground">
-                    An error occurred while claiming
+                    An error occurred while claiming revenue from {getAssetTypeName().toLowerCase()}
                   </p>
                 </div>
               </>
@@ -102,22 +109,22 @@ export const ClaimRevenueDialog = ({
               <h4 className="text-lg font-semibold mb-4">Claim Details</h4>
               
               <div className="space-y-4">
-                {/* Dataset Info */}
+                {/* Dataset/Derivative Info */}
                 <div>
                   <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
                     <Coins className="h-3 w-3" />
-                    DATASET
+                    {getAssetTypeLabel()}
                   </div>
                   <div className="text-sm bg-background/50 p-3 rounded-lg border border-border">
                     {datasetTitle}
                   </div>
                 </div>
 
-                {/* IP Asset ID */}
+                {/* IP Asset ID or Derivative IP ID */}
                 <div>
                   <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
                     <Zap className="h-3 w-3" />
-                    IP ASSET ID
+                    {getIpAssetLabel()}
                   </div>
                   <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
                     {ipAssetId}
@@ -135,6 +142,9 @@ export const ClaimRevenueDialog = ({
                       <div className="text-2xl font-bold text-green-600">
                         {claimedAmount} WIP
                       </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        From {getAssetTypeName().toLowerCase()} revenue pool
+                      </p>
                     </div>
                   </div>
                 )}
@@ -143,7 +153,7 @@ export const ClaimRevenueDialog = ({
                 {success && txHash && (
                   <div>
                     <div className="text-xs font-semibold text-primary mb-2 flex items-center gap-2">
-                      <Zap className="h-3 w-3" />
+                      <ExternalLink className="h-3 w-3" />
                       TRANSACTION HASH
                     </div>
                     <div className="font-mono text-xs break-all bg-background/50 p-3 rounded-lg border border-border">
@@ -156,7 +166,7 @@ export const ClaimRevenueDialog = ({
                 {error && (
                   <div>
                     <div className="text-xs font-semibold text-red-600 mb-2 flex items-center gap-2">
-                      <Zap className="h-3 w-3" />
+                      <AlertCircle className="h-3 w-3" />
                       ERROR
                     </div>
                     <div className="text-sm p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600">
