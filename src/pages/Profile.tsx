@@ -3,14 +3,39 @@ import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Thermometer, Sun, Droplets, Sprout, CloudRain, TrendingUp, Shield, Loader2, ExternalLink, AlertCircle, MapPin, Coins, CheckCircle } from "lucide-react";
+import { 
+  Thermometer, 
+  Sun, 
+  Droplets, 
+  Sprout, 
+  CloudRain, 
+  TrendingUp, 
+  Shield, 
+  Loader2, 
+  ExternalLink, 
+  AlertCircle, 
+  MapPin, 
+  Coins, 
+  CheckCircle,
+  FileCheck,
+  Calendar,
+  DollarSign,
+  FileText,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  User,
+  Image as ImageIcon
+} from "lucide-react";
 import { useAccount } from "wagmi";
 import { useToast } from "@/hooks/use-toast";
 import { createSupabaseService } from "@/services/supabaseService";
-import type { SensorDataRecord } from "@/services/supabaseService";
+import type { SensorDataRecord, LicenseRecord } from "@/services/supabaseService";
 import { useRevenueClaiming, useClaimableRevenue } from "@/utils/revenueClaimingService";
 import { Address } from "viem";
 import { ClaimRevenueDialog } from "@/components/ClaimRevenueDialog";
+import { getEnrichedMetadata, type EnrichedIPMetadata } from "@/utils/coreMetadataViewService";
+import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -29,6 +54,21 @@ interface RegisteredDataset {
   location?: string;
   timestamp: string;
   sensor_health: string;
+}
+
+interface LicenseWithDataset extends LicenseRecord {
+  dataset_title?: string;
+  dataset_type?: string;
+  dataset_location?: string;
+  dataset_data?: string;
+  dataset_timestamp?: string;
+  dataset_sensor_health?: string;
+  dataset_image_hash?: string;
+  icon?: React.ReactNode;
+  gradient?: string;
+  metadata?: EnrichedIPMetadata;
+  metadataLoading?: boolean;
+  showMetadata?: boolean;
 }
 
 const getIconForType = (type: string): React.ReactNode => {
@@ -75,30 +115,37 @@ const getGradientForType = (type: string): string => {
   }
 };
 
+const formatDate = (dateString?: string) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 // Component to display and claim revenue for each dataset
 const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
   const { claimableAmount, loading: fetchingRevenue, refetch } = useClaimableRevenue(dataset.ip_asset_id as Address);
   const { claimRevenue, claiming } = useRevenueClaiming();
   const { toast } = useToast();
   
-  // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState(false);
   const [claimTxHash, setClaimTxHash] = useState<string>("");
   const [claimError, setClaimError] = useState<string>("");
 
-  // Format claimable amount to WIP tokens (assuming 18 decimals)
   const formattedAmount = claimableAmount 
     ? (parseFloat(claimableAmount) / 1e18).toFixed(6)
     : '0.000000';
 
   const handleClaimRevenue = async () => {
-    // Reset states
     setClaimSuccess(false);
     setClaimError("");
     setClaimTxHash("");
-    
-    // Open dialog
     setDialogOpen(true);
     
     try {
@@ -111,8 +158,6 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
         
         setClaimTxHash(txHash);
         setClaimSuccess(true);
-        
-        // Refetch claimable revenue after successful claim
         setTimeout(() => refetch(), 2000);
       } else {
         setClaimError(result.error || "Failed to claim revenue");
@@ -128,7 +173,6 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
   const handleDialogClose = (open: boolean) => {
     setDialogOpen(open);
     if (!open) {
-      // Reset states when dialog is closed
       setTimeout(() => {
         setClaimSuccess(false);
         setClaimError("");
@@ -198,13 +242,6 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
           <div className="flex gap-2 pt-4 border-t border-border">
             <Button 
               size="sm" 
-              className="bg-gradient-to-r from-primary to-secondary hover:opacity-90"
-            >
-              View Analytics
-            </Button>
-            
-            <Button 
-              size="sm" 
               variant="outline"
               className="border-green-500/50 text-green-600 hover:bg-green-500/10"
               onClick={handleClaimRevenue}
@@ -238,7 +275,6 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
         </CardContent>
       </Card>
 
-      {/* Claim Revenue Dialog */}
       <ClaimRevenueDialog
         open={dialogOpen}
         onOpenChange={handleDialogClose}
@@ -259,15 +295,18 @@ const Profile = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [registeredData, setRegisteredData] = useState<RegisteredDataset[]>([]);
-  const [totalLicenses, setTotalLicenses] = useState(0);
+  const [licenses, setLicenses] = useState<LicenseWithDataset[]>([]);
   const [loadingLicenses, setLoadingLicenses] = useState(false);
+  const [totalLicenses, setTotalLicenses] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [loadingEarnings, setLoadingEarnings] = useState(false);
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
+  const [supabaseClient] = useState(() => createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
 
   useEffect(() => {
     if (isConnected && address) {
       fetchRegisteredData();
+      fetchUserLicenses();
     } else {
       setLoading(false);
     }
@@ -309,7 +348,6 @@ const Profile = () => {
 
         setRegisteredData(transformedData);
         
-        // Fetch total licenses and earnings for all datasets
         await Promise.all([
           fetchTotalLicenses(myRegisteredData.map(r => r.id!)),
           fetchTotalEarnings(myRegisteredData.map(r => r.id!))
@@ -336,24 +374,86 @@ const Profile = () => {
     }
   };
 
+  const fetchUserLicenses = async () => {
+    if (!address) return;
+
+    setLoadingLicenses(true);
+    try {
+      const normalizedAddress = address.toLowerCase();
+      
+      const result = await supabaseClient
+        .from('licenses')
+        .select('*')
+        .ilike('receiver_address', normalizedAddress)
+        .order('minted_at', { ascending: false })
+        .limit(100);
+
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+
+      if (result.data && result.data.length > 0) {
+        const sensorDataIds = [...new Set(result.data.map(l => l.sensor_data_id))];
+        
+        const sensorDataResult = await supabaseClient
+          .from('sensor_data')
+          .select('*')
+          .in('id', sensorDataIds);
+        
+        const sensorDataMap = new Map(
+          sensorDataResult.data?.map(sd => [sd.id, sd]) || []
+        );
+        
+        const enrichedLicenses = result.data.map((license) => {
+          const sensorData = sensorDataMap.get(license.sensor_data_id);
+          
+          return {
+            ...license,
+            dataset_title: sensorData?.title || 'Unknown Dataset',
+            dataset_type: sensorData?.type || 'Unknown',
+            dataset_location: sensorData?.location || undefined,
+            dataset_data: sensorData?.data || undefined,
+            dataset_timestamp: sensorData?.timestamp || undefined,
+            dataset_sensor_health: sensorData?.sensor_health || undefined,
+            dataset_image_hash: sensorData?.image_hash || undefined,
+            icon: getIconForType(sensorData?.type || 'Unknown'),
+            gradient: getGradientForType(sensorData?.type || 'Unknown'),
+            showMetadata: false,
+            metadataLoading: false,
+          };
+        });
+
+        setLicenses(enrichedLicenses);
+      } else {
+        setLicenses([]);
+      }
+    } catch (error: any) {
+      console.error('Error fetching licenses:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load your licenses",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingLicenses(false);
+    }
+  };
+
   const fetchTotalLicenses = async (datasetIds: number[]) => {
     if (datasetIds.length === 0) {
       setTotalLicenses(0);
       return;
     }
 
-    setLoadingLicenses(true);
     try {
       let totalCount = 0;
 
-      // Fetch licenses for each dataset
       for (const datasetId of datasetIds) {
         const result = await supabaseService.fetchLicenses({
           sensor_data_id: datasetId
         });
 
         if (result.success && result.data) {
-          // Sum up the amount (number of licenses) for each license record
           const datasetLicenseCount = result.data.reduce((sum, license) => sum + (license.amount || 0), 0);
           totalCount += datasetLicenseCount;
         }
@@ -363,8 +463,6 @@ const Profile = () => {
     } catch (error: any) {
       console.error('Error fetching total licenses:', error);
       setTotalLicenses(0);
-    } finally {
-      setLoadingLicenses(false);
     }
   };
 
@@ -378,14 +476,12 @@ const Profile = () => {
     try {
       let totalEarningsSum = 0;
 
-      // Fetch licenses for each dataset and sum minting fees
       for (const datasetId of datasetIds) {
         const result = await supabaseService.fetchLicenses({
           sensor_data_id: datasetId
         });
 
         if (result.success && result.data) {
-          // Sum up the minting_fee_paid for each license
           const datasetEarnings = result.data.reduce((sum, license) => {
             return sum + (license.minting_fee_paid || 0);
           }, 0);
@@ -402,6 +498,129 @@ const Profile = () => {
     }
   };
 
+  const decodeJsonString = (jsonString?: string) => {
+    if (!jsonString) return null;
+    
+    try {
+      const base64Data = jsonString.replace('data:application/json;base64,', '');
+      const decodedString = atob(base64Data);
+      return JSON.parse(decodedString);
+    } catch (error) {
+      console.error('Error decoding jsonString:', error);
+      return null;
+    }
+  };
+
+  const toggleMetadata = async (licenseId: number | string) => {
+    const license = licenses.find(l => l.id === licenseId);
+    if (!license) return;
+
+    if (license.showMetadata) {
+      setLicenses(prev => prev.map(l => 
+        l.id === licenseId ? { ...l, showMetadata: false } : l
+      ));
+      return;
+    }
+
+    if (!license.metadata && !license.metadataLoading) {
+      setLicenses(prev => prev.map(l => 
+        l.id === licenseId ? { ...l, metadataLoading: true } : l
+      ));
+
+      try {
+        const metadata = await getEnrichedMetadata(license.ip_asset_id as `0x${string}`);
+        
+        const decodedJson = decodeJsonString(metadata.jsonString);
+        
+        if (decodedJson) {
+          const attributes = decodedJson.attributes || [];
+          const attributesMap = new Map(
+            attributes.map((attr: any) => [attr.trait_type, attr.value])
+          );
+          
+          const ownerValue = attributesMap.get('Owner');
+          const metadataURIValue = attributesMap.get('MetadataURI');
+          const nftTokenURIValue = attributesMap.get('NFTTokenURI');
+          const metadataHashValue = attributesMap.get('MetadataHash');
+          const nftMetadataHashValue = attributesMap.get('NFTMetadataHash');
+          const regDateStr = attributesMap.get('Registration Date');
+          
+          if (ownerValue && typeof ownerValue === 'string') {
+            metadata.owner = ownerValue as `0x${string}`;
+          }
+          if (metadataURIValue && typeof metadataURIValue === 'string') {
+            metadata.metadataURI = metadataURIValue;
+          }
+          if (nftTokenURIValue && typeof nftTokenURIValue === 'string') {
+            metadata.nftTokenURI = nftTokenURIValue;
+          }
+          if (metadataHashValue && typeof metadataHashValue === 'string') {
+            metadata.metadataHash = metadataHashValue as `0x${string}`;
+          }
+          if (nftMetadataHashValue && typeof nftMetadataHashValue === 'string') {
+            metadata.nftMetadataHash = nftMetadataHashValue as `0x${string}`;
+          }
+          if (regDateStr && (typeof regDateStr === 'string' || typeof regDateStr === 'number')) {
+            metadata.registrationDate = BigInt(regDateStr);
+          }
+          
+          if (metadata.metadataURI) {
+            try {
+              const ipfsUrl = metadata.metadataURI.replace('ipfs://', 'https://ipfs.io/ipfs/');
+              const response = await fetch(ipfsUrl);
+              if (response.ok) {
+                metadata.ipMetadataDetails = await response.json();
+              }
+            } catch (err) {
+              console.error('Error fetching IP metadata from URI:', err);
+            }
+          }
+          
+          if (metadata.nftTokenURI) {
+            try {
+              const ipfsUrl = metadata.nftTokenURI.replace('ipfs://', 'https://ipfs.io/ipfs/');
+              const response = await fetch(ipfsUrl);
+              if (response.ok) {
+                metadata.nftMetadataDetails = await response.json();
+              }
+            } catch (err) {
+              console.error('Error fetching NFT metadata from URI:', err);
+            }
+          }
+        }
+        
+        setLicenses(prev => prev.map(l => 
+          l.id === licenseId ? { 
+            ...l, 
+            metadata, 
+            metadataLoading: false, 
+            showMetadata: true 
+          } : l
+        ));
+
+        toast({
+          title: "Metadata Loaded",
+          description: "Successfully fetched IP metadata",
+        });
+      } catch (error: any) {
+        console.error('Error fetching metadata:', error);
+        setLicenses(prev => prev.map(l => 
+          l.id === licenseId ? { ...l, metadataLoading: false } : l
+        ));
+        
+        toast({
+          title: "Error",
+          description: "Failed to load metadata",
+          variant: "destructive",
+        });
+      }
+    } else {
+      setLicenses(prev => prev.map(l => 
+        l.id === licenseId ? { ...l, showMetadata: true } : l
+      ));
+    }
+  };
+
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-background">
@@ -415,7 +634,7 @@ const Profile = () => {
               Wallet Not Connected
             </h1>
             <p className="text-xl text-muted-foreground mb-8">
-              Please connect your wallet to view your registered IP assets
+              Please connect your wallet to view your profile
             </p>
           </div>
         </div>
@@ -434,7 +653,7 @@ const Profile = () => {
               Loading Your Data
             </h1>
             <p className="text-xl text-muted-foreground">
-              Fetching your registered IP assets...
+              Fetching your profile information...
             </p>
           </div>
         </div>
@@ -446,23 +665,28 @@ const Profile = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       
-      <div className="container mx-auto px-4 py-24">
-        <div className="max-w-6xl mx-auto space-y-8">
+      <div className="relative pt-24 pb-12 overflow-hidden">
+        <div className="absolute inset-0 z-0 bg-gradient-to-b from-background/80 via-background to-background"></div>
+        
+        <div className="container mx-auto px-4 relative z-10">
           {/* Profile Header */}
-          <div className="text-center animate-slide-up">
+          <div className="text-center mb-12 animate-slide-up">
             <Badge className="mb-4 bg-primary/10 text-primary border-primary/20 animate-glow">
               Your Profile
             </Badge>
             <h1 className="text-5xl md:text-6xl font-bold mb-4">
-              Your <span className="gradient-text">Registered IP</span>
+              Your <span className="gradient-text">IP Dashboard</span>
             </h1>
-            <p className="text-xl text-muted-foreground">
-              Track your IP-protected datasets and claim revenue
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-2">
+              Track your IP-protected datasets and acquired licenses
+            </p>
+            <p className="text-sm text-muted-foreground font-mono">
+              {address?.slice(0, 6)}...{address?.slice(-4)}
             </p>
           </div>
 
           {/* Stats Overview */}
-          <div className="grid md:grid-cols-3 gap-6 animate-slide-in-left">
+          <div className="grid md:grid-cols-3 gap-6 mb-12 animate-slide-in-left">
             <Card className="glass-card hover-lift">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
@@ -476,7 +700,7 @@ const Profile = () => {
                     ) : (
                       <p className="text-3xl font-bold gradient-text">{totalEarnings.toFixed(6)} WIP</p>
                     )}
-                    <p className="text-xs text-muted-foreground mt-1">From all license minting fees</p>
+                    <p className="text-xs text-muted-foreground mt-1">From license minting</p>
                   </div>
                 </div>
               </CardContent>
@@ -491,6 +715,7 @@ const Profile = () => {
                   <div>
                     <p className="text-sm text-muted-foreground">Registered Datasets</p>
                     <p className="text-3xl font-bold">{registeredData.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1">IP-protected assets</p>
                   </div>
                 </div>
               </CardContent>
@@ -503,21 +728,20 @@ const Profile = () => {
                     <Coins className="h-7 w-7 text-white" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Total Licenses</p>
+                    <p className="text-sm text-muted-foreground">Licenses Held</p>
                     {loadingLicenses ? (
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     ) : (
-                      <p className="text-3xl font-bold">{totalLicenses}</p>
+                      <p className="text-3xl font-bold">{licenses.length}</p>
                     )}
-                    <p className="text-xs text-muted-foreground mt-1">(Across all datasets)</p>
+                    <p className="text-xs text-muted-foreground mt-1">Acquired licenses</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
-
-          {/* Registered Data List */}
-          <div className="space-y-4">
+          {/* Registered Datasets Section */}
+          <div className="space-y-4 mb-16">
             <h2 className="text-3xl font-bold mb-6">
               IP-Protected <span className="gradient-text">Datasets</span>
             </h2>
@@ -550,12 +774,292 @@ const Profile = () => {
               ))
             )}
           </div>
+           {/* Acquired Licenses Section */}
+          <div className="space-y-4">
+            <h2 className="text-3xl font-bold mb-6">
+              Acquired <span className="gradient-text">Licenses</span>
+            </h2>
+            
+            {loadingLicenses ? (
+              <div className="text-center py-24">
+                <Loader2 className="h-12 w-12 animate-spin mx-auto mb-6 text-primary" />
+                <h3 className="text-2xl font-bold mb-4">
+                  Loading <span className="gradient-text">Your Licenses</span>
+                </h3>
+                <p className="text-xl text-muted-foreground">
+                  Fetching your license collection...
+                </p>
+              </div>
+            ) : licenses.length === 0 ? (
+              <div className="text-center py-24">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
+                  <AlertCircle className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <h3 className="text-3xl font-bold mb-4">No Licenses Yet</h3>
+                <p className="text-xl text-muted-foreground mb-6 max-w-2xl mx-auto">
+                  No licenses have been minted to your address yet. Visit the marketplace to mint licenses for agricultural data!
+                </p>
+                <Button 
+                  onClick={() => window.location.href = '/marketplace'}
+                  className="bg-gradient-to-r from-primary to-secondary"
+                >
+                  Browse Marketplace
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {licenses.map((license, index) => (
+                  <Card 
+                    key={license.id}
+                    className="glass-card hover-lift group animate-slide-in-left overflow-hidden"
+                    style={{animationDelay: `${index * 0.05}s`}}
+                  >
+                    <div className={`h-2 bg-gradient-to-r ${license.gradient}`}></div>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-12 h-12 bg-gradient-to-br ${license.gradient} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                          <div className="text-white">
+                            {license.icon}
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-primary font-bold text-xs">
+                          x{license.amount}
+                        </Badge>
+                      </div>
+                      
+                      <CardTitle className="text-lg group-hover:text-primary transition-colors mb-2">
+                        {license.dataset_title || 'Unknown Dataset'}
+                      </CardTitle>
+                      
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs">
+                          {license.dataset_type || 'Unknown'}
+                        </Badge>
+                        {license.revenue_share_percentage && (
+                          <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 text-xs">
+                            {license.revenue_share_percentage}% Rev
+                          </Badge>
+                        )}
+                      </div>
+                    </CardHeader>
+                    
+                    <CardContent className="space-y-3">
+                      {license.dataset_location && (
+                        <div className="flex items-center gap-2 text-sm bg-blue-500/5 p-2 rounded border border-blue-500/20">
+                          <MapPin className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                          <span className="text-foreground">{license.dataset_location}</span>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center gap-2 text-sm bg-purple-500/5 p-2 rounded border border-purple-500/20">
+                        <Calendar className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                        <span className="text-xs text-muted-foreground">Minted:</span>
+                        <span className="text-xs text-foreground font-medium">{formatDate(license.minted_at)}</span>
+                      </div>
+                      
+                      {license.minting_fee_paid && (
+                        <div className="flex items-center gap-2 text-sm bg-amber-500/5 p-2 rounded border border-amber-500/20">
+                          <DollarSign className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                          <span className="text-xs text-muted-foreground">Paid:</span>
+                          <span className="text-xs text-foreground font-medium">{license.minting_fee_paid.toFixed(4)} WIP</span>
+                        </div>
+                      )}
+                      
+                      <div className="pt-2 border-t border-border space-y-2">
+                        {/* IP Asset ID */}
+                        <div className="flex items-center gap-2 text-xs">
+                          <Shield className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">IP:</span>
+                          <span className="font-mono text-primary">{license.ip_asset_id.slice(0, 10)}...</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank');
+                            }}
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        
+                        {/* License Terms ID */}
+                        <div className="flex items-center gap-2 text-xs">
+                          <FileText className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">License:</span>
+                          <span className="font-mono text-foreground">
+                            {license.license_terms_id.slice(0, 10)}...
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`https://aeneid.explorer.story.foundation/license-terms/${license.license_terms_id}`, '_blank');
+                            }}
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        
+                        {license.license_token_ids && license.license_token_ids.length > 0 && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <FileCheck className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Tokens:</span>
+                            <span className="font-mono text-foreground">
+                              {license.license_token_ids.length} token(s)
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Metadata Toggle Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-primary/30 text-primary text-xs h-8"
+                        onClick={() => toggleMetadata(license.id)}
+                        disabled={license.metadataLoading}
+                      >
+                        {license.metadataLoading ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Loading Metadata...
+                          </>
+                        ) : (
+                          <>
+                            <Info className="h-3 w-3 mr-1" />
+                            {license.showMetadata ? 'Hide' : 'Show'} IP Metadata
+                            {license.showMetadata ? (
+                              <ChevronUp className="h-3 w-3 ml-1" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3 ml-1" />
+                            )}
+                          </>
+                        )}
+                      </Button>
+
+                      {/* Metadata Display */}
+                      {license.showMetadata && license.metadata && (
+                        <div className="space-y-3 pt-3 border-t border-border">
+                          <div className="text-xs font-semibold text-primary flex items-center gap-1">
+                            <Info className="h-3 w-3" />
+                            IP Metadata Details
+                          </div>
+
+                          {license.metadata.ipMetadataDetails?.description && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-1">Description</div>
+                              <div className="text-xs">{license.metadata.ipMetadataDetails.description}</div>
+                            </div>
+                          )}
+
+                          {license.metadata.ipMetadataDetails?.image && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                                <ImageIcon className="h-3 w-3" />
+                                Image
+                              </div>
+                              <img 
+                                src={license.metadata.ipMetadataDetails.image.replace('ipfs://', 'https://ipfs.io/ipfs/')} 
+                                alt="IP Asset"
+                                className="w-full h-32 object-cover rounded"
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                              />
+                            </div>
+                          )}
+
+                          {license.metadata.owner && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                Owner
+                              </div>
+                              <div className="text-xs font-mono break-all">{license.metadata.owner}</div>
+                            </div>
+                          )}
+
+                          {license.metadata.registrationDate && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                Registered
+                              </div>
+                              <div className="text-xs">
+                                {(() => {
+                                  try {
+                                    const timestamp = typeof license.metadata.registrationDate === 'bigint' 
+                                      ? Number(license.metadata.registrationDate) 
+                                      : license.metadata.registrationDate;
+                                    const date = new Date(timestamp * 1000);
+                                    return date.toLocaleString();
+                                  } catch (e) {
+                                    return 'N/A';
+                                  }
+                                })()}
+                              </div>
+                            </div>
+                          )}
+
+                          {license.metadata.ipMetadataDetails?.creators && license.metadata.ipMetadataDetails.creators.length > 0 && (
+                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                              <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                Creators
+                              </div>
+                              {license.metadata.ipMetadataDetails.creators.map((creator, idx) => (
+                                <div key={idx} className="text-xs mb-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-medium">{creator.name}</span>
+                                    <span className="text-muted-foreground">{creator.contributionPercent}%</span>
+                                  </div>
+                                  {creator.address && (
+                                    <div className="font-mono text-muted-foreground text-[10px] mt-0.5">
+                                      {creator.address}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="flex gap-2 pt-2">
+                        {license.story_explorer_tx_url && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="flex-1 border-primary/50 text-xs h-8"
+                            onClick={() => window.open(license.story_explorer_tx_url, '_blank')}
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View TX
+                          </Button>
+                        )}
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="flex-1 border-purple-500/50 text-purple-600 text-xs h-8"
+                          onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank')}
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          View IP
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+        
+        <div className="absolute top-1/3 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-1/3 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-float" style={{animationDelay: '3s'}}></div>
       </div>
-      
-      {/* Floating background elements */}
-      <div className="fixed top-1/3 left-10 w-72 h-72 bg-primary/5 rounded-full blur-3xl animate-float pointer-events-none"></div>
-      <div className="fixed bottom-1/3 right-10 w-96 h-96 bg-secondary/5 rounded-full blur-3xl animate-float pointer-events-none" style={{animationDelay: '3s'}}></div>
     </div>
   );
 };
