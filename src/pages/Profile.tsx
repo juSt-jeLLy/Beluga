@@ -984,7 +984,7 @@ if (typeof window !== 'undefined') {
             )}
           </div>
 
-          {/* Registered Derivatives Section */}
+{/* Registered Derivatives Section */}
           <div className="space-y-4 mb-16">
             <h2 className="text-3xl font-bold mb-6">
               Registered <span className="gradient-text">Derivatives</span>
@@ -1011,152 +1011,101 @@ if (typeof window !== 'undefined') {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {derivatives.map((derivative, index) => (
-                  <Card 
-                    key={derivative.id}
-                    className="glass-card hover-lift animate-slide-in-left"
-                    style={{animationDelay: `${index * 0.1}s`}}
-                  >
-                    <div className={`h-2 bg-gradient-to-r ${getGradientForType(derivative.derivative_type)}`}></div>
-                    <CardHeader>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className={`w-12 h-12 bg-gradient-to-br ${getGradientForType(derivative.derivative_type)} rounded-xl flex items-center justify-center`}>
+              derivatives.map((derivative, index) => (
+                <Card 
+                  key={derivative.id}
+                  className="glass-card hover-lift animate-slide-in-right"
+                  style={{animationDelay: `${index * 0.1}s`}}
+                >
+                  <div className={`h-1 bg-gradient-to-r ${getGradientForType(derivative.derivative_type)}`}></div>
+                  <CardHeader>
+                    <div className="flex items-start justify-between flex-wrap gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-14 h-14 bg-gradient-to-br ${getGradientForType(derivative.derivative_type)} rounded-xl flex items-center justify-center`}>
                           <div className="text-white">
                             {getIconForType(derivative.derivative_type)}
                           </div>
                         </div>
-                        <Badge className="bg-purple-500/20 text-purple-600 border-purple-500/30">
-                          Derivative
-                        </Badge>
-                      </div>
-                      
-                      <CardTitle className="text-lg mb-2">
-                        {derivative.derivative_title}
-                      </CardTitle>
-                      
-                      <CardDescription className="text-xs">
-                        <div className="flex items-center gap-1 mb-1">
-                          <Shield className="h-3 w-3" />
-                          <span className="font-mono">{derivative.derivative_ip_id.slice(0, 12)}...</span>
-                        </div>
-                        {derivative.derivative_location && (
-                          <div className="flex items-center gap-1 text-blue-500">
-                            <MapPin className="h-3 w-3" />
-                            {derivative.derivative_location}
-                          </div>
-                        )}
-                      </CardDescription>
-                    </CardHeader>
-                    
-                    <CardContent className="space-y-3">
-                      {/* Parent IP Info */}
-                      <div className="bg-primary/5 p-3 rounded border border-primary/20">
-                        <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                          <TrendingUp className="h-3 w-3" />
-                          Parent IP Asset
-                        </div>
-                        <div className="text-xs font-mono text-foreground mb-1">
-                          {derivative.parent_ip_id.slice(0, 10)}...{derivative.parent_ip_id.slice(-8)}
-                        </div>
-                        {derivative.parent_title && (
-                          <div className="text-xs text-muted-foreground">
-                            {derivative.parent_title}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Creator Info */}
-                      <div className="bg-green-500/5 p-3 rounded border border-green-500/20">
-                        <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          Creator
-                        </div>
-                        <div className="text-xs font-semibold text-foreground mb-1">
-                          {derivative.creator_name}
-                        </div>
-                        <div className="text-xs font-mono text-muted-foreground">
-                          {derivative.creator_address.slice(0, 10)}...{derivative.creator_address.slice(-8)}
+                        <div>
+                          <CardTitle className="text-xl">{derivative.derivative_title}</CardTitle>
+                          <CardDescription className="mt-1">
+                            Derivative IP ID: <span className="font-mono font-semibold">{derivative.derivative_ip_id.slice(0, 12)}...</span>
+                            {derivative.derivative_location && (
+                              <span className="ml-3 text-blue-500">
+                                <MapPin className="inline h-3 w-3 mr-1" />
+                                {derivative.derivative_location}
+                              </span>
+                            )}
+                          </CardDescription>
                         </div>
                       </div>
-
-                      {/* Royalty Info */}
+                      <Badge className="bg-purple-500/20 text-purple-600 border-purple-500/30">
+                        <CheckCircle className="h-2.5 w-2.5 mr-1" />
+                        Derivative
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Registration Date</p>
+                        <p className="font-semibold">{formatDate(derivative.registered_at)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Type</p>
+                        <p className="font-semibold capitalize">{derivative.derivative_type}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Creator</p>
+                        <p className="font-semibold">{derivative.creator_name}</p>
+                      </div>
                       {derivative.royalty_percentage && (
-                        <div className="bg-amber-500/5 p-3 rounded border border-amber-500/20">
-                          <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                            <Coins className="h-3 w-3" />
-                            Royalty Configuration
-                          </div>
-                          <div className="text-xs text-foreground font-medium">
-                            {derivative.royalty_percentage}% Royalty
-                          </div>
-                          {derivative.royalty_recipient && (
-                            <div className="text-xs font-mono text-muted-foreground mt-1">
-                              Recipient: {derivative.royalty_recipient.slice(0, 10)}...
-                            </div>
-                          )}
+                        <div>
+                          <p className="text-sm text-muted-foreground">Royalty</p>
+                          <p className="font-semibold text-amber-600">{derivative.royalty_percentage}%</p>
                         </div>
                       )}
+                    </div>
 
-                      {/* Registration Info */}
-                      <div className="flex items-center gap-2 text-xs bg-purple-500/5 p-2 rounded border border-purple-500/20">
-                        <Calendar className="h-3 w-3 text-purple-500 flex-shrink-0" />
-                        <span className="text-muted-foreground">Registered:</span>
-                        <span className="text-foreground font-medium">{formatDate(derivative.registered_at)}</span>
+                    <div className="bg-primary/5 p-4 rounded-lg border border-primary/20 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <TrendingUp className="h-4 w-4 text-primary" />
+                        <p className="text-sm font-semibold text-primary">Parent IP Asset</p>
                       </div>
-
-                      {/* License Terms */}
-                      <div className="pt-2 border-t border-border">
-                        <div className="flex items-center gap-2 text-xs">
-                          <FileText className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">License:</span>
-                          <span className="font-mono text-foreground">
-                            {derivative.license_terms_id.slice(0, 10)}...
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-4 w-4"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(`https://aeneid.explorer.story.foundation/license-terms/${derivative.license_terms_id}`, '_blank');
-                            }}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex gap-2 pt-2">
-                        {derivative.story_explorer_url && (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="flex-1 border-primary/50 text-xs h-8"
-                            onClick={() => window.open(derivative.story_explorer_url, '_blank')}
-                          >
-                            <ExternalLink className="h-3 w-3 mr-1" />
-                            View Derivative
-                          </Button>
-                        )}
+                      <p className="text-sm font-mono mb-1">{derivative.parent_ip_id.slice(0, 20)}...{derivative.parent_ip_id.slice(-10)}</p>
+                      {derivative.parent_title && (
+                        <p className="text-sm text-muted-foreground">{derivative.parent_title}</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2 pt-4 border-t border-border">
+                      {derivative.story_explorer_url && (
                         <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="flex-1 border-purple-500/50 text-purple-600 text-xs h-8"
-                          onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${derivative.derivative_ip_id}`, '_blank')}
+                          size="sm" 
+                          variant="outline"
+                          className="border-primary/50 text-primary hover:bg-primary/10"
+                          onClick={() => window.open(derivative.story_explorer_url, '_blank')}
                         >
                           <ExternalLink className="h-3 w-3 mr-1" />
-                          View IP
+                          View Derivative
                         </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      )}
+                      
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-purple-500/50 text-purple-600"
+                        onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${derivative.parent_ip_id}`, '_blank')}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        View Parent IP
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
             )}
           </div>
-          
            {/* Acquired Licenses Section */}
           <div className="space-y-4">
             <h2 className="text-3xl font-bold mb-6">
