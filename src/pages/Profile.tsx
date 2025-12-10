@@ -300,6 +300,8 @@ const Profile = () => {
   const [totalLicenses, setTotalLicenses] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [loadingEarnings, setLoadingEarnings] = useState(false);
+  const [derivatives, setDerivatives] = useState<any[]>([]);
+  const [loadingDerivatives, setLoadingDerivatives] = useState(false);
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
   const [supabaseClient] = useState(() => createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
 
@@ -307,6 +309,7 @@ const Profile = () => {
     if (isConnected && address) {
       fetchRegisteredData();
       fetchUserLicenses();
+      fetchUserDerivatives();
     } else {
       setLoading(false);
     }
@@ -438,6 +441,211 @@ const Profile = () => {
       setLoadingLicenses(false);
     }
   };
+
+const fetchUserDerivatives = async () => {
+  if (!address) {
+    console.log('No address available for fetching derivatives');
+    return;
+  }
+
+  setLoadingDerivatives(true);
+  try {
+    const normalizedAddress = address.toLowerCase();
+    console.log('=== FETCHING DERIVATIVES ===');
+    console.log('Looking for derivatives created by:', normalizedAddress);
+    console.log('(This is different from the parent IP creator)');
+    
+    // Query derivative_ip_assets where creator_address = connected wallet
+    // This finds derivatives CREATED BY the user, not derivatives OF the user's IPs
+    const result = await supabaseClient
+      .from('derivative_ip_assets')
+      .select(`
+        id,
+        sensor_data_id,
+        derivative_ip_id,
+        parent_ip_id,
+        license_terms_id,
+        creator_name,
+        creator_address,
+        royalty_recipient,
+        royalty_percentage,
+        max_minting_fee,
+        max_revenue_share,
+        max_rts,
+        transaction_hash,
+        story_explorer_url,
+        metadata_url,
+        character_file_url,
+        nft_token_id,
+        nft_contract_address,
+        image_url,
+        registered_at,
+        created_at,
+        sensor_data:sensor_data!sensor_data_id (
+          id,
+          type,
+          title,
+          location,
+          timestamp,
+          data,
+          sensor_health,
+          creator_address
+        )
+      `)
+      .ilike('creator_address', normalizedAddress)
+      .order('registered_at', { ascending: false });
+
+    console.log('Derivatives query result:', result);
+    
+    if (result.error) {
+      console.error('Error fetching derivatives:', result.error);
+      throw new Error(result.error.message);
+    }
+
+    if (result.data && result.data.length > 0) {
+      console.log(`Found ${result.data.length} derivatives created by ${normalizedAddress}`);
+      
+      // For each derivative, also fetch parent IP info
+      const enrichedDerivatives = await Promise.all(
+        result.data.map(async (derivative: any) => {
+          // Try to get parent IP info from sensor_data table
+          let parentInfo = null;
+          try {
+            const parentResult = await supabaseClient
+              .from('sensor_data')
+              .select('id, type, title, location, creator_address, ip_asset_id')
+              .eq('ip_asset_id', derivative.parent_ip_id)
+              .single();
+            
+            if (parentResult.data) {
+              parentInfo = parentResult.data;
+              console.log('Found parent IP info:', parentInfo);
+            }
+          } catch (err) {
+            console.log('Parent IP not in our database:', derivative.parent_ip_id);
+          }
+
+          return {
+            id: derivative.id,
+            sensor_data_id: derivative.sensor_data_id,
+            derivative_ip_id: derivative.derivative_ip_id,
+            parent_ip_id: derivative.parent_ip_id,
+            license_terms_id: derivative.license_terms_id,
+            creator_name: derivative.creator_name,
+            creator_address: derivative.creator_address,
+            royalty_recipient: derivative.royalty_recipient,
+            royalty_percentage: derivative.royalty_percentage,
+            max_minting_fee: derivative.max_minting_fee,
+            max_revenue_share: derivative.max_revenue_share,
+            transaction_hash: derivative.transaction_hash,
+            story_explorer_url: derivative.story_explorer_url,
+            metadata_url: derivative.metadata_url,
+            nft_token_id: derivative.nft_token_id,
+            image_url: derivative.image_url,
+            registered_at: derivative.registered_at,
+            // Derivative's own sensor data (the transformed data)
+            derivative_type: derivative.sensor_data?.type || 'Unknown',
+            derivative_title: derivative.sensor_data?.title || 'Untitled Derivative',
+            derivative_location: derivative.sensor_data?.location,
+            derivative_timestamp: derivative.sensor_data?.timestamp,
+            derivative_data: derivative.sensor_data?.data,
+            // Parent IP information (if available)
+            parent_type: parentInfo?.type,
+            parent_title: parentInfo?.title,
+            parent_location: parentInfo?.location,
+            parent_creator_address: parentInfo?.creator_address,
+          };
+        })
+      );
+
+      console.log('Enriched derivatives with parent info:', enrichedDerivatives);
+      setDerivatives(enrichedDerivatives);
+
+      toast({
+        title: "Derivatives Loaded",
+        description: `Found ${enrichedDerivatives.length} derivatives you created`,
+      });
+    } else {
+      console.log('No derivatives found created by:', normalizedAddress);
+      
+      // Debug: Show some sample derivatives from the database
+      const sampleCheck = await supabaseClient
+        .from('derivative_ip_assets')
+        .select('id, derivative_ip_id, creator_address, creator_name')
+        .order('registered_at', { ascending: false })
+        .limit(5);
+      
+      console.log('Sample derivatives in database:', sampleCheck.data);
+      console.log('Your address:', normalizedAddress);
+      console.log('Make sure the creator_address in the database matches exactly (case-insensitive)');
+      
+      setDerivatives([]);
+    }
+  } catch (error: any) {
+    console.error('Error fetching derivatives:', error);
+    toast({
+      title: "Error",
+      description: error.message || "Failed to load derivatives",
+      variant: "destructive",
+    });
+    setDerivatives([]);
+  } finally {
+    setLoadingDerivatives(false);
+  }
+};
+
+// Helper function to manually check the database
+// Run in console: window.debugDerivatives('0xYourAddress')
+if (typeof window !== 'undefined') {
+  (window as any).debugDerivatives = async (checkAddress?: string) => {
+    const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    console.log('=== DERIVATIVES DEBUG ===');
+    
+    // Get total count
+    const { count } = await client
+      .from('derivative_ip_assets')
+      .select('*', { count: 'exact', head: true });
+    
+    console.log('Total derivatives:', count);
+    
+    // Get all derivatives
+    const { data: all } = await client
+      .from('derivative_ip_assets')
+      .select('id, derivative_ip_id, creator_name, creator_address, parent_ip_id, registered_at')
+      .order('registered_at', { ascending: false });
+    
+    console.log('All derivatives:', all);
+    
+    if (checkAddress) {
+      const normalized = checkAddress.toLowerCase();
+      const filtered = all?.filter((d: any) => 
+        d.creator_address.toLowerCase() === normalized
+      );
+      console.log(`Derivatives for ${checkAddress}:`, filtered);
+      
+      if (filtered && filtered.length === 0) {
+        console.log('❌ No derivatives found for this address');
+        console.log('Available creator addresses:', 
+          [...new Set(all?.map((d: any) => d.creator_address))]
+        );
+      } else {
+        console.log(`✅ Found ${filtered?.length} derivatives`);
+      }
+    }
+    
+    return all;
+  };
+}
+
+// Also add a function to check what the user should see
+if (typeof window !== 'undefined') {
+  (window as any).checkMyDerivatives = async () => {
+    // This requires you to have the connected address
+    console.log('Please run: window.debugDerivatives("YOUR_WALLET_ADDRESS")');
+    console.log('Replace YOUR_WALLET_ADDRESS with your connected wallet');
+  };
+}
 
   const fetchTotalLicenses = async (datasetIds: number[]) => {
     if (datasetIds.length === 0) {
@@ -740,6 +948,7 @@ const Profile = () => {
               </CardContent>
             </Card>
           </div>
+
           {/* Registered Datasets Section */}
           <div className="space-y-4 mb-16">
             <h2 className="text-3xl font-bold mb-6">
@@ -774,6 +983,180 @@ const Profile = () => {
               ))
             )}
           </div>
+
+          {/* Registered Derivatives Section */}
+          <div className="space-y-4 mb-16">
+            <h2 className="text-3xl font-bold mb-6">
+              Registered <span className="gradient-text">Derivatives</span>
+            </h2>
+            
+            {loadingDerivatives ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-12 w-12 animate-spin mx-auto mb-6 text-primary" />
+                <h3 className="text-2xl font-bold mb-4">
+                  Loading <span className="gradient-text">Your Derivatives</span>
+                </h3>
+                <p className="text-xl text-muted-foreground">
+                  Fetching your derivative IP assets...
+                </p>
+              </div>
+            ) : derivatives.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-4">
+                  <AlertCircle className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">No Derivatives Created</h3>
+                <p className="text-muted-foreground mb-6">
+                  You haven't created any derivative IP assets yet.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {derivatives.map((derivative, index) => (
+                  <Card 
+                    key={derivative.id}
+                    className="glass-card hover-lift animate-slide-in-left"
+                    style={{animationDelay: `${index * 0.1}s`}}
+                  >
+                    <div className={`h-2 bg-gradient-to-r ${getGradientForType(derivative.derivative_type)}`}></div>
+                    <CardHeader>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-12 h-12 bg-gradient-to-br ${getGradientForType(derivative.derivative_type)} rounded-xl flex items-center justify-center`}>
+                          <div className="text-white">
+                            {getIconForType(derivative.derivative_type)}
+                          </div>
+                        </div>
+                        <Badge className="bg-purple-500/20 text-purple-600 border-purple-500/30">
+                          Derivative
+                        </Badge>
+                      </div>
+                      
+                      <CardTitle className="text-lg mb-2">
+                        {derivative.derivative_title}
+                      </CardTitle>
+                      
+                      <CardDescription className="text-xs">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Shield className="h-3 w-3" />
+                          <span className="font-mono">{derivative.derivative_ip_id.slice(0, 12)}...</span>
+                        </div>
+                        {derivative.derivative_location && (
+                          <div className="flex items-center gap-1 text-blue-500">
+                            <MapPin className="h-3 w-3" />
+                            {derivative.derivative_location}
+                          </div>
+                        )}
+                      </CardDescription>
+                    </CardHeader>
+                    
+                    <CardContent className="space-y-3">
+                      {/* Parent IP Info */}
+                      <div className="bg-primary/5 p-3 rounded border border-primary/20">
+                        <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                          <TrendingUp className="h-3 w-3" />
+                          Parent IP Asset
+                        </div>
+                        <div className="text-xs font-mono text-foreground mb-1">
+                          {derivative.parent_ip_id.slice(0, 10)}...{derivative.parent_ip_id.slice(-8)}
+                        </div>
+                        {derivative.parent_title && (
+                          <div className="text-xs text-muted-foreground">
+                            {derivative.parent_title}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Creator Info */}
+                      <div className="bg-green-500/5 p-3 rounded border border-green-500/20">
+                        <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          Creator
+                        </div>
+                        <div className="text-xs font-semibold text-foreground mb-1">
+                          {derivative.creator_name}
+                        </div>
+                        <div className="text-xs font-mono text-muted-foreground">
+                          {derivative.creator_address.slice(0, 10)}...{derivative.creator_address.slice(-8)}
+                        </div>
+                      </div>
+
+                      {/* Royalty Info */}
+                      {derivative.royalty_percentage && (
+                        <div className="bg-amber-500/5 p-3 rounded border border-amber-500/20">
+                          <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                            <Coins className="h-3 w-3" />
+                            Royalty Configuration
+                          </div>
+                          <div className="text-xs text-foreground font-medium">
+                            {derivative.royalty_percentage}% Royalty
+                          </div>
+                          {derivative.royalty_recipient && (
+                            <div className="text-xs font-mono text-muted-foreground mt-1">
+                              Recipient: {derivative.royalty_recipient.slice(0, 10)}...
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Registration Info */}
+                      <div className="flex items-center gap-2 text-xs bg-purple-500/5 p-2 rounded border border-purple-500/20">
+                        <Calendar className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                        <span className="text-muted-foreground">Registered:</span>
+                        <span className="text-foreground font-medium">{formatDate(derivative.registered_at)}</span>
+                      </div>
+
+                      {/* License Terms */}
+                      <div className="pt-2 border-t border-border">
+                        <div className="flex items-center gap-2 text-xs">
+                          <FileText className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">License:</span>
+                          <span className="font-mono text-foreground">
+                            {derivative.license_terms_id.slice(0, 10)}...
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`https://aeneid.explorer.story.foundation/license-terms/${derivative.license_terms_id}`, '_blank');
+                            }}
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 pt-2">
+                        {derivative.story_explorer_url && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="flex-1 border-primary/50 text-xs h-8"
+                            onClick={() => window.open(derivative.story_explorer_url, '_blank')}
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View Derivative
+                          </Button>
+                        )}
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="flex-1 border-purple-500/50 text-purple-600 text-xs h-8"
+                          onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${derivative.derivative_ip_id}`, '_blank')}
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          View IP
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+          
            {/* Acquired Licenses Section */}
           <div className="space-y-4">
             <h2 className="text-3xl font-bold mb-6">
