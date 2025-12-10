@@ -147,17 +147,6 @@ const formatTime = (dateString: string) => {
   });
 };
 
-const formatDateTime = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
 const Marketplace = () => {
   const { address, isConnected } = useAccount();
   const { toast } = useToast();
@@ -466,13 +455,6 @@ const Marketplace = () => {
         ));
       }
     }
-  };
-
-  const handleViewDetails = (dataset: MarketplaceDataset | DerivativeDataset) => {
-    toast({
-      title: dataset.title,
-      description: `Location: ${dataset.location || 'Unknown'}\nRecorded: ${formatDateTime(dataset.timestamp)}`,
-    });
   };
 
   const handleViewIP = (url: string) => {
@@ -796,13 +778,6 @@ const Marketplace = () => {
                           sensorDataId={dataset.id}
                           supabaseService={supabaseService}
                         />
-                        <Button 
-                          variant="outline" 
-                          className="border-primary/50 text-sm h-9"
-                          onClick={() => handleViewDetails(dataset)}
-                        >
-                          Details
-                        </Button>
                         {dataset.story_explorer_url && (
                           <Button 
                             variant="outline" 
@@ -1052,13 +1027,6 @@ const Marketplace = () => {
                           sensorDataId={derivative.sensor_data_id}
                           supabaseService={supabaseService}
                         />
-                        <Button 
-                          variant="outline" 
-                          className="border-purple-500/50 text-purple-600 text-sm h-9"
-                          onClick={() => handleViewDetails(derivative)}
-                        >
-                          Details
-                        </Button>
                         {derivative.story_explorer_url && (
                           <Button 
                             variant="outline" 
