@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { createSupabaseService } from "@/services/supabaseService";
 import type { SensorDataRecord, LicenseRecord } from "@/services/supabaseService";
 import { useRevenueClaiming, useClaimableRevenue } from "@/utils/revenueClaimingService";
-import { Address } from "viem";
+import { Address, zeroAddress } from "viem"; // Added zeroAddress
 import { ClaimRevenueDialog } from "@/components/ClaimRevenueDialog";
 import { getEnrichedMetadata, type EnrichedIPMetadata } from "@/utils/coreMetadataViewService";
 import { createClient } from '@supabase/supabase-js';
@@ -108,6 +108,13 @@ interface LicenseWithDataset extends LicenseRecord {
   metadata?: EnrichedIPMetadata;
   metadataLoading?: boolean;
   showMetadata?: boolean;
+}
+
+interface LicenseCardProps {
+  license: LicenseWithDataset;
+  index: number;
+  toggleMetadata: (licenseId: number | string) => void;
+  toast: any;
 }
 
 const getIconForType = (type: string): React.ReactNode => {
@@ -396,7 +403,7 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
     }
   };
 
-  // Handle royalty payment
+  // Handle royalty payment for derivative
   const handlePayRoyalty = async (amount: string) => {
     setRoyaltySuccess(false);
     setRoyaltyError("");
@@ -599,7 +606,7 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
         isDerivative={true}
       />
 
-      {/* Pay Royalty Dialog */}
+      {/* Pay Royalty Dialog for Derivative */}
       <PayRoyaltyDialog
         open={royaltyDialogOpen}
         onOpenChange={handleRoyaltyDialogClose}
@@ -614,6 +621,345 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
         error={royaltyError}
         onPayRoyalty={handlePayRoyalty}
         maxAmount="100" // You can adjust this based on your needs or fetch from the license terms
+      />
+    </>
+  );
+};
+
+// Component for License Card with Pay Royalty to IP functionality
+const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps) => {
+  const { payRoyalty, paying: payingRoyalty, isConnected } = useRoyaltyPayment();
+  const [royaltyDialogOpen, setRoyaltyDialogOpen] = useState(false);
+  const [royaltySuccess, setRoyaltySuccess] = useState(false);
+  const [royaltyTxHash, setRoyaltyTxHash] = useState<string>("");
+  const [royaltyAmount, setRoyaltyAmount] = useState<string>("");
+  const [royaltyError, setRoyaltyError] = useState<string>("");
+
+  // Handle royalty payment for license - payerIpId is zeroAddress
+  const handlePayRoyaltyToIP = async (amount: string) => {
+    setRoyaltySuccess(false);
+    setRoyaltyError("");
+    setRoyaltyTxHash("");
+    setRoyaltyAmount(amount);
+    
+    try {
+      // Use zeroAddress as payerIpId as specified
+      const result = await payRoyalty(
+        license.ip_asset_id as Address, // receiverIpId = IP Asset ID (who receives)
+        zeroAddress as Address, // payerIpId = zeroAddress (as per your requirement)
+        amount // amount in WIP
+      );
+      
+      if (result.success) {
+        setRoyaltyTxHash(result.txHash || "");
+        setRoyaltySuccess(true);
+        
+        toast({
+          title: "Royalty Paid",
+          description: `Successfully paid ${amount} WIP to IP Asset ${license.dataset_title}`,
+        });
+      } else {
+        setRoyaltyError(result.error || "Failed to pay royalty");
+        setRoyaltySuccess(false);
+      }
+    } catch (error: any) {
+      console.error('Royalty payment error:', error);
+      setRoyaltyError(error.message || "An unexpected error occurred");
+      setRoyaltySuccess(false);
+    }
+  };
+
+  const handleRoyaltyDialogClose = (open: boolean) => {
+    setRoyaltyDialogOpen(open);
+    if (!open) {
+      setTimeout(() => {
+        setRoyaltySuccess(false);
+        setRoyaltyError("");
+        setRoyaltyTxHash("");
+        setRoyaltyAmount("");
+      }, 300);
+    }
+  };
+
+  return (
+    <>
+      <Card 
+        className="glass-card hover-lift group animate-slide-in-left overflow-hidden"
+        style={{animationDelay: `${index * 0.05}s`}}
+      >
+        <div className={`h-2 bg-gradient-to-r ${license.gradient}`}></div>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between mb-3">
+            <div className={`w-12 h-12 bg-gradient-to-br ${license.gradient} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+              <div className="text-white">
+                {license.icon}
+              </div>
+            </div>
+            <Badge variant="secondary" className="text-primary font-bold text-xs">
+              x{license.amount}
+            </Badge>
+          </div>
+          
+          <CardTitle className="text-lg group-hover:text-primary transition-colors mb-2">
+            {license.dataset_title || 'Unknown Dataset'}
+          </CardTitle>
+          
+          <div className="flex flex-wrap gap-2 mb-3">
+            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs">
+              {license.dataset_type || 'Unknown'}
+            </Badge>
+            {license.revenue_share_percentage && (
+              <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 text-xs">
+                {license.revenue_share_percentage}% Rev
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        
+        <CardContent className="space-y-3">
+          {license.dataset_location && (
+            <div className="flex items-center gap-2 text-sm bg-blue-500/5 p-2 rounded border border-blue-500/20">
+              <MapPin className="h-3 w-3 text-blue-500 flex-shrink-0" />
+              <span className="text-foreground">{license.dataset_location}</span>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2 text-sm bg-purple-500/5 p-2 rounded border border-purple-500/20">
+            <Calendar className="h-3 w-3 text-purple-500 flex-shrink-0" />
+            <span className="text-xs text-muted-foreground">Minted:</span>
+            <span className="text-xs text-foreground font-medium">{formatDate(license.minted_at)}</span>
+          </div>
+          
+          {license.minting_fee_paid && (
+            <div className="flex items-center gap-2 text-sm bg-amber-500/5 p-2 rounded border border-amber-500/20">
+              <DollarSign className="h-3 w-3 text-amber-500 flex-shrink-0" />
+              <span className="text-xs text-muted-foreground">Paid:</span>
+              <span className="text-xs text-foreground font-medium">{license.minting_fee_paid.toFixed(4)} WIP</span>
+            </div>
+          )}
+          
+          <div className="pt-2 border-t border-border space-y-2">
+            {/* IP Asset ID */}
+            <div className="flex items-center gap-2 text-xs">
+              <Shield className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">IP:</span>
+              <span className="font-mono text-primary">{license.ip_asset_id.slice(0, 10)}...</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-4 w-4"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank');
+                }}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            </div>
+            
+            {/* License Terms ID */}
+            <div className="flex items-center gap-2 text-xs">
+              <FileText className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">License:</span>
+              <span className="font-mono text-foreground">
+                {license.license_terms_id.slice(0, 10)}...
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-4 w-4"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(`https://aeneid.explorer.story.foundation/license-terms/${license.license_terms_id}`, '_blank');
+                }}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            </div>
+            
+            {license.license_token_ids && license.license_token_ids.length > 0 && (
+              <div className="flex items-center gap-2 text-xs">
+                <FileCheck className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Tokens:</span>
+                <span className="font-mono text-foreground">
+                  {license.license_token_ids.length} token(s)
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2 pt-2">
+            {/* Pay Royalty to IP Button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="flex-1 border-purple-500/50 text-purple-600 hover:bg-purple-500/10 text-xs h-8"
+              onClick={() => setRoyaltyDialogOpen(true)}
+              disabled={payingRoyalty}
+            >
+              {payingRoyalty ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Paying...
+                </>
+              ) : (
+                <>
+                  <ArrowRightLeft className="h-3 w-3 mr-1" />
+                  Pay Royalty to IP
+                </>
+              )}
+            </Button>
+
+            {/* Metadata Toggle Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 border-primary/30 text-primary text-xs h-8"
+              onClick={() => toggleMetadata(license.id)}
+              disabled={license.metadataLoading}
+            >
+              {license.metadataLoading ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <Info className="h-3 w-3 mr-1" />
+                  {license.showMetadata ? 'Hide' : 'Show'} Metadata
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Metadata Display */}
+          {license.showMetadata && license.metadata && (
+            <div className="space-y-3 pt-3 border-t border-border">
+              <div className="text-xs font-semibold text-primary flex items-center gap-1">
+                <Info className="h-3 w-3" />
+                IP Metadata Details
+              </div>
+
+              {license.metadata.ipMetadataDetails?.description && (
+                <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                  <div className="text-xs text-muted-foreground mb-1">Description</div>
+                  <div className="text-xs">{license.metadata.ipMetadataDetails.description}</div>
+                </div>
+              )}
+
+              {license.metadata.ipMetadataDetails?.image && (
+                <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                  <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                    <ImageIcon className="h-3 w-3" />
+                    Image
+                  </div>
+                  <img 
+                    src={license.metadata.ipMetadataDetails.image.replace('ipfs://', 'https://ipfs.io/ipfs/')} 
+                    alt="IP Asset"
+                    className="w-full h-32 object-cover rounded"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                </div>
+              )}
+
+              {license.metadata.owner && (
+                <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                  <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    Owner
+                  </div>
+                  <div className="text-xs font-mono break-all">{license.metadata.owner}</div>
+                </div>
+              )}
+
+              {license.metadata.registrationDate && (
+                <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                  <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Registered
+                  </div>
+                  <div className="text-xs">
+                    {(() => {
+                      try {
+                        const timestamp = typeof license.metadata.registrationDate === 'bigint' 
+                          ? Number(license.metadata.registrationDate) 
+                          : license.metadata.registrationDate;
+                        const date = new Date(timestamp * 1000);
+                        return date.toLocaleString();
+                      } catch (e) {
+                        return 'N/A';
+                      }
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {license.metadata.ipMetadataDetails?.creators && license.metadata.ipMetadataDetails.creators.length > 0 && (
+                <div className="bg-primary/5 p-2 rounded border border-primary/20">
+                  <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    Creators
+                  </div>
+                  {license.metadata.ipMetadataDetails.creators.map((creator, idx) => (
+                    <div key={idx} className="text-xs mb-1">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">{creator.name}</span>
+                        <span className="text-muted-foreground">{creator.contributionPercent}%</span>
+                      </div>
+                      {creator.address && (
+                        <div className="font-mono text-muted-foreground text-[10px] mt-0.5">
+                          {creator.address}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          
+          <div className="flex gap-2 pt-2">
+            {license.story_explorer_tx_url && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="flex-1 border-primary/50 text-xs h-8"
+                onClick={() => window.open(license.story_explorer_tx_url, '_blank')}
+              >
+                <ExternalLink className="h-3 w-3 mr-1" />
+                View TX
+              </Button>
+            )}
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="flex-1 border-purple-500/50 text-purple-600 text-xs h-8"
+              onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank')}
+            >
+              <ExternalLink className="h-3 w-3 mr-1" />
+              View IP
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pay Royalty Dialog for License */}
+      <PayRoyaltyDialog
+        open={royaltyDialogOpen}
+        onOpenChange={handleRoyaltyDialogClose}
+        paying={payingRoyalty}
+        success={royaltySuccess}
+        txHash={royaltyTxHash}
+        amount={royaltyAmount}
+        parentTitle={license.dataset_title || 'IP Asset'}
+        parentIpId={license.ip_asset_id}
+        derivativeTitle="Direct Payment"
+        derivativeIpId={zeroAddress}
+        error={royaltyError}
+        onPayRoyalty={handlePayRoyaltyToIP}
+        maxAmount="100"
+        isDirectPayment={true}
       />
     </>
   );
@@ -1328,248 +1674,13 @@ const Profile = () => {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {licenses.map((license, index) => (
-                  <Card 
+                  <LicenseCard 
                     key={license.id}
-                    className="glass-card hover-lift group animate-slide-in-left overflow-hidden"
-                    style={{animationDelay: `${index * 0.05}s`}}
-                  >
-                    <div className={`h-2 bg-gradient-to-r ${license.gradient}`}></div>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className={`w-12 h-12 bg-gradient-to-br ${license.gradient} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                          <div className="text-white">
-                            {license.icon}
-                          </div>
-                        </div>
-                        <Badge variant="secondary" className="text-primary font-bold text-xs">
-                          x{license.amount}
-                        </Badge>
-                      </div>
-                      
-                      <CardTitle className="text-lg group-hover:text-primary transition-colors mb-2">
-                        {license.dataset_title || 'Unknown Dataset'}
-                      </CardTitle>
-                      
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs">
-                          {license.dataset_type || 'Unknown'}
-                        </Badge>
-                        {license.revenue_share_percentage && (
-                          <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 text-xs">
-                            {license.revenue_share_percentage}% Rev
-                          </Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-                    
-                    <CardContent className="space-y-3">
-                      {license.dataset_location && (
-                        <div className="flex items-center gap-2 text-sm bg-blue-500/5 p-2 rounded border border-blue-500/20">
-                          <MapPin className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                          <span className="text-foreground">{license.dataset_location}</span>
-                        </div>
-                      )}
-                      
-                      <div className="flex items-center gap-2 text-sm bg-purple-500/5 p-2 rounded border border-purple-500/20">
-                        <Calendar className="h-3 w-3 text-purple-500 flex-shrink-0" />
-                        <span className="text-xs text-muted-foreground">Minted:</span>
-                        <span className="text-xs text-foreground font-medium">{formatDate(license.minted_at)}</span>
-                      </div>
-                      
-                      {license.minting_fee_paid && (
-                        <div className="flex items-center gap-2 text-sm bg-amber-500/5 p-2 rounded border border-amber-500/20">
-                          <DollarSign className="h-3 w-3 text-amber-500 flex-shrink-0" />
-                          <span className="text-xs text-muted-foreground">Paid:</span>
-                          <span className="text-xs text-foreground font-medium">{license.minting_fee_paid.toFixed(4)} WIP</span>
-                        </div>
-                      )}
-                      
-                      <div className="pt-2 border-t border-border space-y-2">
-                        {/* IP Asset ID */}
-                        <div className="flex items-center gap-2 text-xs">
-                          <Shield className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">IP:</span>
-                          <span className="font-mono text-primary">{license.ip_asset_id.slice(0, 10)}...</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-4 w-4"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank');
-                            }}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        
-                        {/* License Terms ID */}
-                        <div className="flex items-center gap-2 text-xs">
-                          <FileText className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">License:</span>
-                          <span className="font-mono text-foreground">
-                            {license.license_terms_id.slice(0, 10)}...
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-4 w-4"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(`https://aeneid.explorer.story.foundation/license-terms/${license.license_terms_id}`, '_blank');
-                            }}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        
-                        {license.license_token_ids && license.license_token_ids.length > 0 && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <FileCheck className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-muted-foreground">Tokens:</span>
-                            <span className="font-mono text-foreground">
-                              {license.license_token_ids.length} token(s)
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Metadata Toggle Button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full border-primary/30 text-primary text-xs h-8"
-                        onClick={() => toggleMetadata(license.id)}
-                        disabled={license.metadataLoading}
-                      >
-                        {license.metadataLoading ? (
-                          <>
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                            Loading Metadata...
-                          </>
-                        ) : (
-                          <>
-                            <Info className="h-3 w-3 mr-1" />
-                            {license.showMetadata ? 'Hide' : 'Show'} IP Metadata
-                            {license.showMetadata ? (
-                              <ChevronUp className="h-3 w-3 ml-1" />
-                            ) : (
-                              <ChevronDown className="h-3 w-3 ml-1" />
-                            )}
-                          </>
-                        )}
-                      </Button>
-
-                      {/* Metadata Display */}
-                      {license.showMetadata && license.metadata && (
-                        <div className="space-y-3 pt-3 border-t border-border">
-                          <div className="text-xs font-semibold text-primary flex items-center gap-1">
-                            <Info className="h-3 w-3" />
-                            IP Metadata Details
-                          </div>
-
-                          {license.metadata.ipMetadataDetails?.description && (
-                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                              <div className="text-xs text-muted-foreground mb-1">Description</div>
-                              <div className="text-xs">{license.metadata.ipMetadataDetails.description}</div>
-                            </div>
-                          )}
-
-                          {license.metadata.ipMetadataDetails?.image && (
-                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                              <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                                <ImageIcon className="h-3 w-3" />
-                                Image
-                              </div>
-                              <img 
-                                src={license.metadata.ipMetadataDetails.image.replace('ipfs://', 'https://ipfs.io/ipfs/')} 
-                                alt="IP Asset"
-                                className="w-full h-32 object-cover rounded"
-                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                              />
-                            </div>
-                          )}
-
-                          {license.metadata.owner && (
-                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                                <User className="h-3 w-3" />
-                                Owner
-                              </div>
-                              <div className="text-xs font-mono break-all">{license.metadata.owner}</div>
-                            </div>
-                          )}
-
-                          {license.metadata.registrationDate && (
-                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
-                                Registered
-                              </div>
-                              <div className="text-xs">
-                                {(() => {
-                                  try {
-                                    const timestamp = typeof license.metadata.registrationDate === 'bigint' 
-                                      ? Number(license.metadata.registrationDate) 
-                                      : license.metadata.registrationDate;
-                                    const date = new Date(timestamp * 1000);
-                                    return date.toLocaleString();
-                                  } catch (e) {
-                                    return 'N/A';
-                                  }
-                                })()}
-                              </div>
-                            </div>
-                          )}
-
-                          {license.metadata.ipMetadataDetails?.creators && license.metadata.ipMetadataDetails.creators.length > 0 && (
-                            <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                              <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                                <User className="h-3 w-3" />
-                                Creators
-                              </div>
-                              {license.metadata.ipMetadataDetails.creators.map((creator, idx) => (
-                                <div key={idx} className="text-xs mb-1">
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">{creator.name}</span>
-                                    <span className="text-muted-foreground">{creator.contributionPercent}%</span>
-                                  </div>
-                                  {creator.address && (
-                                    <div className="font-mono text-muted-foreground text-[10px] mt-0.5">
-                                      {creator.address}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                      <div className="flex gap-2 pt-2">
-                        {license.story_explorer_tx_url && (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="flex-1 border-primary/50 text-xs h-8"
-                            onClick={() => window.open(license.story_explorer_tx_url, '_blank')}
-                          >
-                            <ExternalLink className="h-3 w-3 mr-1" />
-                            View TX
-                          </Button>
-                        )}
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="flex-1 border-purple-500/50 text-purple-600 text-xs h-8"
-                          onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank')}
-                        >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          View IP
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    license={license}
+                    index={index}
+                    toggleMetadata={toggleMetadata}
+                    toast={toast}
+                  />
                 ))}
               </div>
             )}

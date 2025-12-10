@@ -14,7 +14,8 @@ import {
   CheckCircle,
   Wallet,
   Shield,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Gift
 } from "lucide-react";
 import { useState } from "react";
 
@@ -32,6 +33,7 @@ interface PayRoyaltyDialogProps {
   error?: string;
   onPayRoyalty: (amount: string) => Promise<void>;
   maxAmount?: string;
+  isDirectPayment?: boolean; // Add this prop
 }
 
 export const PayRoyaltyDialog = ({
@@ -48,6 +50,7 @@ export const PayRoyaltyDialog = ({
   error,
   onPayRoyalty,
   maxAmount,
+  isDirectPayment = false, // Default to false
 }: PayRoyaltyDialogProps) => {
   const [royaltyAmount, setRoyaltyAmount] = useState("");
   const [customError, setCustomError] = useState<string>("");
@@ -57,7 +60,9 @@ export const PayRoyaltyDialog = ({
   
   // Construct IP explorer URLs
   const parentIpUrl = `https://aeneid.explorer.story.foundation/ipa/${parentIpId}`;
-  const derivativeIpUrl = `https://aeneid.explorer.story.foundation/ipa/${derivativeIpId}`;
+  const derivativeIpUrl = derivativeIpId !== "0x0000000000000000000000000000000000000000" 
+    ? `https://aeneid.explorer.story.foundation/ipa/${derivativeIpId}`
+    : '';
   
   const handleAmountChange = (value: string) => {
     setRoyaltyAmount(value);
@@ -107,6 +112,23 @@ export const PayRoyaltyDialog = ({
     }
   };
 
+  // Get title based on payment type
+  const getDialogTitle = () => {
+    if (success) return 'Royalty Payment Complete';
+    if (isDirectPayment) return 'Pay Royalty to IP Asset';
+    return 'Pay Royalty to Parent IP';
+  };
+
+  // Get status message based on payment type
+  const getStatusMessage = () => {
+    if (paying) return 'Processing royalty payment on blockchain';
+    if (success) return 'Royalty payment completed successfully';
+    if (error) return 'An error occurred while paying royalty';
+    
+    if (isDirectPayment) return 'Pay royalty directly to IP asset';
+    return 'Pay royalty from derivative to parent IP';
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-[900px] border-2 border-purple-500/20 bg-gradient-to-br from-background via-background to-purple-500/5 p-8">
@@ -127,7 +149,7 @@ export const PayRoyaltyDialog = ({
                     Paying Royalty...
                   </h3>
                   <p className="text-muted-foreground">
-                    Processing royalty payment on blockchain
+                    {getStatusMessage()}
                   </p>
                 </div>
               </>
@@ -147,7 +169,7 @@ export const PayRoyaltyDialog = ({
                     Royalty Paid! 🎉
                   </h3>
                   <p className="text-muted-foreground">
-                    Royalty payment completed successfully
+                    {getStatusMessage()}
                   </p>
                 </div>
               </>
@@ -158,16 +180,20 @@ export const PayRoyaltyDialog = ({
                 <div className="relative">
                   <div className="absolute inset-0 bg-purple-500 rounded-full blur-2xl opacity-30"></div>
                   <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                    <ArrowRightLeft className="h-16 w-16 text-white" />
+                    {isDirectPayment ? (
+                      <Gift className="h-16 w-16 text-white" />
+                    ) : (
+                      <ArrowRightLeft className="h-16 w-16 text-white" />
+                    )}
                   </div>
                 </div>
                 
                 <div className="text-center">
                   <h3 className="text-3xl font-bold bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent mb-2">
-                    Pay Royalty
+                    {isDirectPayment ? 'Support IP Creator' : 'Pay Royalty'}
                   </h3>
                   <p className="text-muted-foreground">
-                    Pay royalty from derivative to parent IP
+                    {getStatusMessage()}
                   </p>
                 </div>
               </>
@@ -187,7 +213,7 @@ export const PayRoyaltyDialog = ({
                     Payment Failed
                   </h3>
                   <p className="text-muted-foreground">
-                    An error occurred while paying royalty
+                    {getStatusMessage()}
                   </p>
                 </div>
               </>
@@ -198,7 +224,7 @@ export const PayRoyaltyDialog = ({
           <div className="flex-1 space-y-6">
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold">
-                {success ? 'Royalty Payment Complete' : 'Pay Royalty to Parent IP'}
+                {getDialogTitle()}
               </DialogTitle>
             </DialogHeader>
             
@@ -206,36 +232,75 @@ export const PayRoyaltyDialog = ({
               {/* IP Relationship Diagram */}
               <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 p-4 rounded-xl border border-purple-500/20">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="text-center">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Shield className="h-4 w-4 text-purple-500" />
-                      <span className="text-sm font-semibold text-purple-600">DERIVATIVE IP</span>
-                    </div>
-                    <div className="text-xs font-mono bg-background/50 p-2 rounded border">
-                      {derivativeTitle || 'Derivative'}
-                    </div>
-                    <div className="text-[10px] font-mono text-muted-foreground mt-1 truncate">
-                      {derivativeIpId.slice(0, 10)}...{derivativeIpId.slice(-8)}
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col items-center">
-                    <ArrowRightLeft className="h-6 w-6 text-primary" />
-                    <span className="text-xs text-muted-foreground mt-1">Pays royalty to</span>
-                  </div>
-                  
-                  <div className="text-center">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Shield className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-semibold text-primary">PARENT IP</span>
-                    </div>
-                    <div className="text-xs font-mono bg-background/50 p-2 rounded border">
-                      {parentTitle || 'Parent Dataset'}
-                    </div>
-                    <div className="text-[10px] font-mono text-muted-foreground mt-1 truncate">
-                      {parentIpId.slice(0, 10)}...{parentIpId.slice(-8)}
-                    </div>
-                  </div>
+                  {isDirectPayment ? (
+                    // Direct payment layout
+                    <>
+                      <div className="text-center w-full">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <Gift className="h-4 w-4 text-green-500" />
+                          <span className="text-sm font-semibold text-green-600">DIRECT PAYMENT</span>
+                        </div>
+                        <div className="text-xs font-mono bg-background/50 p-2 rounded border mb-2">
+                          From Your Wallet
+                        </div>
+                        <div className="text-[10px] font-mono text-muted-foreground mt-1">
+                          Direct royalty payment
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-center mx-4">
+                        <ArrowRightLeft className="h-6 w-6 text-primary" />
+                        <span className="text-xs text-muted-foreground mt-1">Supports</span>
+                      </div>
+                      
+                      <div className="text-center w-full">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <Shield className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-semibold text-primary">IP ASSET</span>
+                        </div>
+                        <div className="text-xs font-mono bg-background/50 p-2 rounded border">
+                          {parentTitle || 'IP Asset'}
+                        </div>
+                        <div className="text-[10px] font-mono text-muted-foreground mt-1 truncate">
+                          {parentIpId.slice(0, 10)}...{parentIpId.slice(-8)}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    // Derivative to parent layout
+                    <>
+                      <div className="text-center">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Shield className="h-4 w-4 text-purple-500" />
+                          <span className="text-sm font-semibold text-purple-600">DERIVATIVE IP</span>
+                        </div>
+                        <div className="text-xs font-mono bg-background/50 p-2 rounded border">
+                          {derivativeTitle || 'Derivative'}
+                        </div>
+                        <div className="text-[10px] font-mono text-muted-foreground mt-1 truncate">
+                          {derivativeIpId.slice(0, 10)}...{derivativeIpId.slice(-8)}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-center">
+                        <ArrowRightLeft className="h-6 w-6 text-primary" />
+                        <span className="text-xs text-muted-foreground mt-1">Pays royalty to</span>
+                      </div>
+                      
+                      <div className="text-center">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Shield className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-semibold text-primary">PARENT IP</span>
+                        </div>
+                        <div className="text-xs font-mono bg-background/50 p-2 rounded border">
+                          {parentTitle || 'Parent Dataset'}
+                        </div>
+                        <div className="text-[10px] font-mono text-muted-foreground mt-1 truncate">
+                          {parentIpId.slice(0, 10)}...{parentIpId.slice(-8)}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -297,7 +362,7 @@ export const PayRoyaltyDialog = ({
                       ) : (
                         <>
                           <Wallet className="h-4 w-4 mr-2" />
-                          Pay Royalty
+                          {isDirectPayment ? 'Support Creator' : 'Pay Royalty'}
                         </>
                       )}
                     </Button>
@@ -328,7 +393,9 @@ export const PayRoyaltyDialog = ({
                         {amount} WIP
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Successfully paid to parent IP owner
+                        {isDirectPayment 
+                          ? 'Successfully paid to IP asset creator' 
+                          : 'Successfully paid to parent IP owner'}
                       </p>
                     </div>
                   </div>
@@ -355,7 +422,7 @@ export const PayRoyaltyDialog = ({
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      The royalty has been recorded and both parties can claim their share
+                      The royalty has been recorded and the creator can claim their share
                     </p>
                   </div>
 
@@ -380,7 +447,7 @@ export const PayRoyaltyDialog = ({
                       className="flex items-center justify-center gap-2 p-3 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 transition-opacity font-medium text-sm"
                     >
                       <ExternalLink className="h-4 w-4" />
-                      View Parent IP
+                      View IP Asset
                     </a>
                   </div>
                 </div>
