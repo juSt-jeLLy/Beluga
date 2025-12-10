@@ -87,7 +87,7 @@ const Navbar = () => {
               <Button variant="ghost" className="hover-lift">Extract Data</Button>
             </Link>
             <Link to="/licenses">
-              <Button variant="ghost" className="hover-lift">Licenses</Button>
+              <Button variant="ghost" className="hover-lift">Derivatives</Button>
             </Link>
             <Link to="/profile">
               <Button variant="ghost" className="hover-lift">Profile</Button>
