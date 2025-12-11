@@ -84,6 +84,8 @@ Unlike traditional data brokers or cloud platforms, BELUGA provides:
 
 ## Process Flow
 
+```
+
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                           DATA COLLECTION PHASE                              │
 ├──────────────────────────────────────────────────────────────────────────────┤
@@ -244,3 +246,4 @@ Unlike traditional data brokers or cloud platforms, BELUGA provides:
 │                   └────────────────────────────┘                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
+```
