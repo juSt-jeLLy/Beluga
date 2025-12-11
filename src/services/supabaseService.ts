@@ -1,5 +1,3 @@
-// supabaseService.ts
-// Service for handling Supabase database operations
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 

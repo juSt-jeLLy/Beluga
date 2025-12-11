@@ -22,15 +22,14 @@ const BLYNK_SERVER = import.meta.env.VITE_BLYNK_SERVER;
 const BLYNK_ACCESS_TOKEN = import.meta.env.VITE_BLYNK_ACCESS_TOKEN;
 const BLYNK_TEMPLATE_ID = parseInt(import.meta.env.VITE_BLYNK_TEMPLATE_ID);
 
-// Define extended interface to include database ID and IP registration status
 interface SensorDataWithId extends SensorData {
-  id?: number; // Database ID
+  id?: number; 
   icon?: React.ReactNode;
-  isRegistered?: boolean; // IP registration status
-  ip_asset_id?: string; // IP Asset ID if registered
-  story_explorer_url?: string; // Story Explorer URL if registered
-  registered_at?: string; // Registration timestamp
-  imageHash?: string; // IPFS image hash
+  isRegistered?: boolean; 
+  ip_asset_id?: string; 
+  story_explorer_url?: string; 
+  registered_at?: string; 
+  imageHash?: string; 
 }
 
 const getIconForType = (type: string): React.ReactNode => {
@@ -51,10 +50,10 @@ const getIconForType = (type: string): React.ReactNode => {
 };
 
 const convertToDisplayData = (record: SensorDataRecord): SensorDataWithId => {
-  // Try to get image hash from database first
+
   let imageHash = record.image_hash;
   
-  // If not in database, try to extract from data
+ 
   if (!imageHash && record.data) {
     const ipfsHashMatch = record.data.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})/);
     if (ipfsHashMatch) {
@@ -63,7 +62,7 @@ const convertToDisplayData = (record: SensorDataRecord): SensorDataWithId => {
   }
   
   return {
-    id: record.id, // Store the database ID
+    id: record.id, 
     type: record.type,
     title: record.title,
     data: record.data,
@@ -79,18 +78,18 @@ const convertToDisplayData = (record: SensorDataRecord): SensorDataWithId => {
     }),
     sensorHealth: record.sensor_health,
     icon: getIconForType(record.type),
-    isRegistered: !!record.ip_asset_id, // Check if IP registered
-    ip_asset_id: record.ip_asset_id, // IP Asset ID
-    story_explorer_url: record.story_explorer_url, // Story Explorer URL
-    registered_at: record.registered_at, // Registration timestamp
-    imageHash: imageHash // Make sure this is included
+    isRegistered: !!record.ip_asset_id, 
+    ip_asset_id: record.ip_asset_id, 
+    story_explorer_url: record.story_explorer_url, 
+    registered_at: record.registered_at, 
+    imageHash: imageHash 
   };
 };
 
 const DataExtraction = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [extractedData, setExtractedData] = useState<SensorDataWithId[]>([]); // Use extended type
+  const [extractedData, setExtractedData] = useState<SensorDataWithId[]>([]); 
   const [selectedMethod, setSelectedMethod] = useState<"gmail" | "blynk">("gmail");
   const [gmailService] = useState(() => createGmailService(GMAIL_API_KEY, GMAIL_CLIENT_ID));
   const [supabaseService] = useState(() => createSupabaseService(SUPABASE_URL, SUPABASE_ANON_KEY));
@@ -108,7 +107,7 @@ const DataExtraction = () => {
     location: string;
   } | null>(null);
   const [ipDialogOpen, setIpDialogOpen] = useState(false);
-  const [originalRecords, setOriginalRecords] = useState<SensorDataRecord[]>([]); // Store original records with IDs
+  const [originalRecords, setOriginalRecords] = useState<SensorDataRecord[]>([]); 
 
   useEffect(() => {
     const loadScripts = async () => {
@@ -302,9 +301,9 @@ const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => 
       const timestamp = new Date(item.timestamp).toISOString();
 
       // Extract image hash from the data
-      let imageHash = item.imageHash; // First check if imageHash is already in the item
+      let imageHash = item.imageHash; 
       
-      // If not, try to extract it from the data
+     
       if (!imageHash) {
         const ipfsHashMatch = item.data.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z0-9]{59})/);
         if (ipfsHashMatch) {
@@ -337,12 +336,12 @@ const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => 
       return {
         type: item.type,
         title: item.title,
-        data: cleanData, // Use cleaned data
+        data: cleanData,
         location: location || null,
         timestamp,
         sensor_health: item.sensorHealth,
         source,
-        image_hash: imageHash || null // Save the image hash to database
+        image_hash: imageHash || null 
       };
     });
 
@@ -716,10 +715,10 @@ const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => 
                                   alt="Sensor captured image"
                                   className="w-full h-full object-cover"
                                   onError={(e) => {
-                                    // If image fails to load, show a fallback
+                                   
                                     const target = e.target as HTMLImageElement;
                                     target.style.display = 'none';
-                                    // Create fallback div
+                                
                                     const parent = target.parentElement;
                                     if (parent) {
                                       const fallback = document.createElement('div');
@@ -777,8 +776,8 @@ const saveToSupabase = async (data: SensorData[], source: 'gmail' | 'blynk') => 
         onOpenChange={setIpDialogOpen}
         sensorData={selectedSensorForIP?.data || null}
         location={selectedSensorForIP?.location || ''}
-        sensorDataId={selectedSensorForIP?.data?.id} // Pass the database ID
-        supabaseService={supabaseService} // Pass the service
+        sensorDataId={selectedSensorForIP?.data?.id} 
+        supabaseService={supabaseService} 
         onRegistrationComplete={handleRegistrationComplete}
       />
     </div>

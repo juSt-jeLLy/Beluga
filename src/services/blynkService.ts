@@ -1,5 +1,3 @@
-// blynkService.ts
-// Service for handling Blynk Cloud API operations
 
 export interface BlynkEvent {
   id: number;

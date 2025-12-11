@@ -385,7 +385,7 @@ const Derivatives = () => {
 
     setSelectedDatasetForDerivative(dataset);
     setDerivativeDialogOpen(true);
-    setShowDerivativeSuccess(false); // Reset success state
+    setShowDerivativeSuccess(false); 
     setSuccessData(null);
   };
 

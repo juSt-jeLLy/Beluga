@@ -1,4 +1,4 @@
-// src/utils/ipMetadataDownloadService.ts
+
 import { Address } from 'viem';
 import { useState } from 'react';
 import { getEnrichedMetadata, type EnrichedIPMetadata, getMetadataURI, getOwner, getRegistrationDate } from './coreMetadataViewService';

@@ -1,5 +1,4 @@
-// derivativeMetadataService.ts
-// Service for generating metadata for derivative IP assets
+
 
 import { Address } from 'viem';
 

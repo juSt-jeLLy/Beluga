@@ -1,4 +1,4 @@
-// derivativeRegistrationService.ts
+
 import { IpMetadata } from '@story-protocol/core-sdk';
 import { Address, parseEther } from 'viem';
 import { useWalletClient, useAccount } from 'wagmi';

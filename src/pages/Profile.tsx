@@ -1,4 +1,4 @@
-// src/pages/Profile.tsx
+
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -930,7 +930,7 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
   const [royaltyAmount, setRoyaltyAmount] = useState<string>("");
   const [royaltyError, setRoyaltyError] = useState<string>("");
 
-  // Handle royalty payment for license - payerIpId is zeroAddress
+  // Handle royalty payment for license
   const handlePayRoyaltyToIP = async (amount: string) => {
     setRoyaltySuccess(false);
     setRoyaltyError("");
@@ -938,10 +938,10 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
     setRoyaltyAmount(amount);
     
     try {
-      // Use zeroAddress as payerIpId as specified
+      
       const result = await payRoyalty(
-        license.ip_asset_id as Address, // receiverIpId = IP Asset ID (who receives)
-        zeroAddress as Address, // payerIpId = zeroAddress (as per your requirement)
+        license.ip_asset_id as Address, // receiverIpId = IP Asset ID 
+        zeroAddress as Address, // payerIpId = zeroAddress 
         amount // amount in WIP
       );
       
