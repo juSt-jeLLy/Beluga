@@ -1,7 +1,7 @@
 // src/utils/ipMetadataDownloadService.ts
 import { Address } from 'viem';
 import { useState } from 'react';
-import { getEnrichedMetadata, type EnrichedIPMetadata } from './coreMetadataViewService';
+import { getEnrichedMetadata, type EnrichedIPMetadata, getMetadataURI } from './coreMetadataViewService';
 import axios from 'axios';
 
 export interface CompleteIPData {
@@ -28,18 +28,12 @@ export interface CompleteIPData {
     contributionPercent: number;
   }>;
   
-  // Media & Files
-  image?: {
-    url: string;
-    ipfsHash: string;
-    hash: string;
-  };
-  media?: {
-    url: string;
-    ipfsHash: string;
-    hash: string;
-    type: string;
-  };
+  // Media & Files (directly from metadataURI JSON)
+  image?: string;
+  imageHash?: string;
+  mediaUrl?: string;
+  mediaHash?: string;
+  mediaType?: string;
   
   // Metadata URLs
   metadataURI?: string;
@@ -49,10 +43,27 @@ export interface CompleteIPData {
   metadataHash?: string;
   nftMetadataHash?: string;
   
-  // IP Metadata Details (from metadataURI)
+  // IP Metadata Details (complete from metadataURI)
   ipMetadata?: {
     raw: string;
     parsed: any;
+    title?: string;
+    description?: string;
+    createdAt?: string;
+    creators?: Array<{
+      name: string;
+      address: string;
+      contributionPercent: number;
+    }>;
+    image?: string;
+    imageHash?: string;
+    mediaUrl?: string;
+    mediaHash?: string;
+    mediaType?: string;
+    aiMetadata?: {
+      characterFileUrl?: string;
+      characterFileHash?: string;
+    };
   };
   
   // NFT Metadata Details (from nftTokenURI)
@@ -61,7 +72,7 @@ export interface CompleteIPData {
     parsed: any;
   };
   
-  // AI Character File (from aiMetadata)
+  // AI Character File (complete JSON from aiMetadata.characterFileUrl)
   characterFile?: {
     url: string;
     hash: string;
@@ -167,73 +178,81 @@ export async function fetchCompleteIPMetadata(
     console.log('Has license data:', !!licenseData);
     console.log('Has dataset context:', !!datasetContext);
     
-    // 1. Get enriched metadata from CoreMetadataViewModule
-    console.log('Step 1: Fetching from CoreMetadataViewModule...');
+    // 1. Get metadata URI from CoreMetadataViewModule
+    console.log('Step 1: Fetching metadata URI from CoreMetadataViewModule...');
     
-    let coreMetadata: any = null;
+    let metadataURI: string | null = null;
+    let nftTokenURI: string | null = null;
+    let owner: Address = '0x0000000000000000000000000000000000000000' as Address;
+    let registrationDate: bigint = 0n;
+    let metadataHash: string = '';
+    let nftMetadataHash: string = '';
+    
     try {
-      coreMetadata = await getEnrichedMetadata(ipAssetId);
-      console.log('Core metadata received:', {
-        hasMetadataURI: !!coreMetadata.metadataURI,
-        metadataURI: coreMetadata.metadataURI,
-        hasNftTokenURI: !!coreMetadata.nftTokenURI,
-        nftTokenURI: coreMetadata.nftTokenURI,
-        owner: coreMetadata.owner,
-        registrationDate: coreMetadata.registrationDate?.toString(),
-        metadataHash: coreMetadata.metadataHash,
-        nftMetadataHash: coreMetadata.nftMetadataHash,
-        isSupported: coreMetadata.isSupported
+      // Fetch metadata URI directly
+      metadataURI = await getMetadataURI(ipAssetId);
+      console.log('Metadata URI:', metadataURI);
+      
+      // Also fetch other core metadata
+      const coreMetadata = await getEnrichedMetadata(ipAssetId);
+      nftTokenURI = coreMetadata.nftTokenURI;
+      owner = coreMetadata.owner || '0x0000000000000000000000000000000000000000' as Address;
+      registrationDate = coreMetadata.registrationDate || 0n;
+      metadataHash = coreMetadata.metadataHash || '';
+      nftMetadataHash = coreMetadata.nftMetadataHash || '';
+      
+      console.log('Additional metadata fetched:', {
+        hasNftTokenURI: !!nftTokenURI,
+        nftTokenURI,
+        owner,
+        registrationDate: registrationDate?.toString(),
+        metadataHash,
+        nftMetadataHash
       });
     } catch (error: any) {
-      console.error('Failed to fetch from CoreMetadataViewModule:', error);
-      console.log('Will use minimal metadata structure');
-      coreMetadata = {
-        owner: '0x0000000000000000000000000000000000000000' as Address,
-        registrationDate: 0n,
-        isSupported: false
-      };
+      console.error('Failed to fetch metadata from CoreMetadataViewModule:', error);
+      metadataURI = null;
     }
     
-    // 2. Fetch IP metadata from metadataURI
+    // 2. Fetch IP metadata from metadataURI (main source)
     let ipMetadataFromURI: any = null;
-    if (coreMetadata.metadataURI) {
-      console.log('Step 2: Fetching IP metadata from URI:', coreMetadata.metadataURI);
-      const ipMetadataResult = await fetchFromIPFS(coreMetadata.metadataURI);
+    if (metadataURI) {
+      console.log('Step 2: Fetching IP metadata from URI:', metadataURI);
+      const ipMetadataResult = await fetchFromIPFS(metadataURI);
       if (ipMetadataResult.parsed) {
         ipMetadataFromURI = ipMetadataResult.parsed;
         console.log('IP metadata fetched from URI:', {
-          hasTitle: !!ipMetadataFromURI.title,
-          hasDescription: !!ipMetadataFromURI.description,
+          title: ipMetadataFromURI.title,
+          description: ipMetadataFromURI.description?.substring(0, 100),
           hasCreators: !!ipMetadataFromURI.creators,
-          hasImage: !!ipMetadataFromURI.image,
+          image: ipMetadataFromURI.image,
+          imageHash: ipMetadataFromURI.imageHash,
+          mediaUrl: ipMetadataFromURI.mediaUrl,
+          mediaHash: ipMetadataFromURI.mediaHash,
+          mediaType: ipMetadataFromURI.mediaType,
           hasAiMetadata: !!ipMetadataFromURI.aiMetadata,
+          characterFileUrl: ipMetadataFromURI.aiMetadata?.characterFileUrl,
           allKeys: Object.keys(ipMetadataFromURI)
         });
       }
+    } else {
+      console.warn('No metadata URI found for IP asset');
+      ipMetadataFromURI = {};
     }
     
     // 3. Fetch NFT metadata from nftTokenURI
     let nftMetadataFromURI: any = null;
-    if (coreMetadata.nftTokenURI) {
-      console.log('Step 3: Fetching NFT metadata from URI:', coreMetadata.nftTokenURI);
-      const nftMetadataResult = await fetchFromIPFS(coreMetadata.nftTokenURI);
+    if (nftTokenURI) {
+      console.log('Step 3: Fetching NFT metadata from URI:', nftTokenURI);
+      const nftMetadataResult = await fetchFromIPFS(nftTokenURI);
       if (nftMetadataResult.parsed) {
         nftMetadataFromURI = nftMetadataResult.parsed;
         console.log('NFT metadata fetched from URI:', Object.keys(nftMetadataFromURI));
       }
     }
     
-    // Use fetched metadata as primary source
+    // Use fetched metadata from metadataURI as primary source
     const ipMetadataDetails = ipMetadataFromURI || {};
-    const nftMetadataDetails = nftMetadataFromURI || {};
-    
-    console.log('Using metadata:', {
-      hasTitle: !!ipMetadataDetails.title,
-      hasDescription: !!ipMetadataDetails.description,
-      hasCreators: !!ipMetadataDetails.creators,
-      hasImage: !!ipMetadataDetails.image,
-      hasAiMetadata: !!ipMetadataDetails.aiMetadata
-    });
     
     // 4. Fetch Character File from aiMetadata if we have the URL
     let characterFile: { url: string; hash: string; raw: string; parsed: any } | undefined;
@@ -268,33 +287,36 @@ export async function fetchCompleteIPMetadata(
     }
     
     // 5. Extract registration date
-    const registrationDate = coreMetadata.registrationDate 
-      ? new Date(Number(coreMetadata.registrationDate) * 1000)
+    const registrationDateObj = registrationDate 
+      ? new Date(Number(registrationDate) * 1000)
       : new Date();
     
-    // 6. Extract image and media info from ipMetadataDetails (from URI)
-    const imageUrl = ipMetadataDetails.image;
-    const imageHash = ipMetadataDetails.imageHash;
-    const mediaUrl = ipMetadataDetails.mediaUrl;
-    const mediaHash = ipMetadataDetails.mediaHash;
-    const mediaType = ipMetadataDetails.mediaType;
-    
-    // 7. Extract creators from ipMetadataDetails
+    // 6. Extract creators from ipMetadataDetails
     const creators = ipMetadataDetails.creators || [];
     
-    // 8. Prepare IP metadata as raw JSON string
+    // 7. Prepare IP metadata as raw JSON string
     const ipMetadata = ipMetadataDetails && Object.keys(ipMetadataDetails).length > 0 ? {
       raw: JSON.stringify(ipMetadataDetails, null, 2),
-      parsed: ipMetadataDetails
+      parsed: ipMetadataDetails,
+      title: ipMetadataDetails.title,
+      description: ipMetadataDetails.description,
+      createdAt: ipMetadataDetails.createdAt,
+      creators: ipMetadataDetails.creators,
+      image: ipMetadataDetails.image,
+      imageHash: ipMetadataDetails.imageHash,
+      mediaUrl: ipMetadataDetails.mediaUrl,
+      mediaHash: ipMetadataDetails.mediaHash,
+      mediaType: ipMetadataDetails.mediaType,
+      aiMetadata: ipMetadataDetails.aiMetadata
     } : undefined;
     
-    // 9. Prepare NFT metadata as raw JSON string
-    const nftMetadata = nftMetadataDetails && Object.keys(nftMetadataDetails).length > 0 ? {
-      raw: JSON.stringify(nftMetadataDetails, null, 2),
-      parsed: nftMetadataDetails
+    // 8. Prepare NFT metadata as raw JSON string
+    const nftMetadata = nftMetadataFromURI && Object.keys(nftMetadataFromURI).length > 0 ? {
+      raw: JSON.stringify(nftMetadataFromURI, null, 2),
+      parsed: nftMetadataFromURI
     } : undefined;
     
-    // 10. Build complete IP data
+    // 9. Build complete IP data
     const completeData: CompleteIPData = {
       ipAssetId,
       title: ipMetadataDetails.title || 
@@ -302,7 +324,7 @@ export async function fetchCompleteIPMetadata(
              'Untitled IP Asset',
       description: ipMetadataDetails.description || '',
       
-      registrationDate: registrationDate.toLocaleString('en-US', {
+      registrationDate: registrationDateObj.toLocaleString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -310,8 +332,8 @@ export async function fetchCompleteIPMetadata(
         minute: '2-digit',
         timeZoneName: 'short'
       }),
-      registeredTimestamp: registrationDate.toISOString(),
-      owner: coreMetadata.owner || '0x0000000000000000000000000000000000000000' as Address,
+      registeredTimestamp: registrationDateObj.toISOString(),
+      owner: owner,
       
       location: datasetContext?.location,
       sensorType: datasetContext?.type,
@@ -320,23 +342,17 @@ export async function fetchCompleteIPMetadata(
       
       creators: creators,
       
-      image: imageUrl ? {
-        url: imageUrl,
-        ipfsHash: extractIPFSHash(imageUrl),
-        hash: imageHash || ''
-      } : undefined,
+      // Directly use fields from metadataURI JSON
+      image: ipMetadataDetails.image,
+      imageHash: ipMetadataDetails.imageHash,
+      mediaUrl: ipMetadataDetails.mediaUrl,
+      mediaHash: ipMetadataDetails.mediaHash,
+      mediaType: ipMetadataDetails.mediaType,
       
-      media: mediaUrl ? {
-        url: mediaUrl,
-        ipfsHash: extractIPFSHash(mediaUrl),
-        hash: mediaHash || '',
-        type: mediaType || 'unknown'
-      } : undefined,
-      
-      metadataURI: coreMetadata.metadataURI,
-      nftTokenURI: coreMetadata.nftTokenURI,
-      metadataHash: coreMetadata.metadataHash,
-      nftMetadataHash: coreMetadata.nftMetadataHash,
+      metadataURI: metadataURI || undefined,
+      nftTokenURI: nftTokenURI || undefined,
+      metadataHash: metadataHash || undefined,
+      nftMetadataHash: nftMetadataHash || undefined,
       
       ipMetadata,
       nftMetadata,
@@ -354,7 +370,16 @@ export async function fetchCompleteIPMetadata(
         minterAddress: licenseData.minter_address,
       } : undefined,
       
-      rawCoreMetadata: coreMetadata,
+      rawCoreMetadata: {
+        nftTokenURI: nftTokenURI || '',
+        nftMetadataHash: nftMetadataHash as `0x${string}` || '0x',
+        metadataURI: metadataURI || '',
+        metadataHash: metadataHash as `0x${string}` || '0x',
+        registrationDate: registrationDate,
+        owner: owner,
+        isSupported: true,
+        ipMetadataDetails: ipMetadataDetails
+      },
       
       datasetContext: datasetContext ? {
         sensorDataId: datasetContext.id,
@@ -366,14 +391,15 @@ export async function fetchCompleteIPMetadata(
     console.log('=== Complete IP Data Assembly Summary ===');
     console.log('Title:', completeData.title);
     console.log('Description length:', completeData.description?.length || 0);
+    console.log('Image (from metadataURI):', completeData.image);
+    console.log('Image Hash (from metadataURI):', completeData.imageHash);
+    console.log('Media URL (from metadataURI):', completeData.mediaUrl);
+    console.log('Media Hash (from metadataURI):', completeData.mediaHash);
+    console.log('Media Type (from metadataURI):', completeData.mediaType);
     console.log('Has IP Metadata:', !!completeData.ipMetadata);
     console.log('Has NFT Metadata:', !!completeData.nftMetadata);
     console.log('Has Character File:', !!completeData.characterFile);
     console.log('Character file content length:', completeData.characterFile?.raw?.length || 0);
-    console.log('Has Image:', !!completeData.image);
-    console.log('Image URL:', completeData.image?.url);
-    console.log('Has Media:', !!completeData.media);
-    console.log('Media URL:', completeData.media?.url);
     console.log('Creators count:', completeData.creators.length);
     console.log('Has License Info:', !!completeData.licenseInfo);
     console.log('Has Dataset Context:', !!completeData.datasetContext);
@@ -435,25 +461,32 @@ export function exportAsMarkdown(data: CompleteIPData): string {
     });
   }
   
-  // Media & Files - ENHANCED SECTION
-  md += `## Media & Files\n\n`;
+  // Media & Files - ENHANCED SECTION with direct metadataURI fields
+  md += `## Media & Files (from metadataURI)\n\n`;
   
   if (data.image) {
     md += `### Image\n`;
-    md += `- **URL:** ${data.image.url}\n`;
-    md += `- **IPFS Hash:** \`${data.image.ipfsHash}\`\n`;
-    md += `- **IPFS Gateway URL:** https://ipfs.io/ipfs/${data.image.ipfsHash}\n`;
-    if (data.image.hash) md += `- **Content Hash:** \`${data.image.hash}\`\n`;
+    md += `- **URL:** ${data.image}\n`;
+    if (data.imageHash) md += `- **Image Hash:** \`${data.imageHash}\`\n`;
+    if (data.image && data.image.startsWith('ipfs://')) {
+      const ipfsHash = data.image.replace('ipfs://', '');
+      md += `- **IPFS Hash:** \`${ipfsHash}\`\n`;
+      md += `- **IPFS Gateway URL:** https://ipfs.io/ipfs/${ipfsHash}\n`;
+    }
     md += `\n`;
   }
   
-  if (data.media) {
+  if (data.mediaUrl) {
     md += `### Media File\n`;
-    md += `- **URL:** ${data.media.url}\n`;
-    md += `- **IPFS Hash:** \`${data.media.ipfsHash}\`\n`;
-    md += `- **IPFS Gateway URL:** https://ipfs.io/ipfs/${data.media.ipfsHash}\n`;
-    if (data.media.hash) md += `- **Content Hash:** \`${data.media.hash}\`\n`;
-    md += `- **Type:** ${data.media.type}\n\n`;
+    md += `- **URL:** ${data.mediaUrl}\n`;
+    if (data.mediaHash) md += `- **Media Hash:** \`${data.mediaHash}\`\n`;
+    if (data.mediaType) md += `- **Media Type:** ${data.mediaType}\n`;
+    if (data.mediaUrl && data.mediaUrl.startsWith('ipfs://')) {
+      const ipfsHash = data.mediaUrl.replace('ipfs://', '');
+      md += `- **IPFS Hash:** \`${ipfsHash}\`\n`;
+      md += `- **IPFS Gateway URL:** https://ipfs.io/ipfs/${ipfsHash}\n`;
+    }
+    md += `\n`;
   }
   
   // AI Character File - PROMINENT SECTION with full JSON
@@ -461,54 +494,19 @@ export function exportAsMarkdown(data: CompleteIPData): string {
     md += `### AI Character File (Complete)\n\n`;
     md += `This character file enables AI-powered interpretation and natural language interaction with the sensor data.\n\n`;
     md += `- **URL:** ${data.characterFile.url}\n`;
-    md += `- **IPFS Hash:** \`${extractIPFSHash(data.characterFile.url)}\`\n`;
-    md += `- **IPFS Gateway URL:** https://ipfs.io/ipfs/${extractIPFSHash(data.characterFile.url)}\n`;
     if (data.characterFile.hash) md += `- **Content Hash:** \`${data.characterFile.hash}\`\n`;
+    if (data.characterFile.url.startsWith('ipfs://')) {
+      const ipfsHash = data.characterFile.url.replace('ipfs://', '');
+      md += `- **IPFS Hash:** \`${ipfsHash}\`\n`;
+      md += `- **IPFS Gateway URL:** https://ipfs.io/ipfs/${ipfsHash}\n`;
+    }
     md += `\n#### Complete Character File JSON\n\n`;
     md += `\`\`\`json\n${data.characterFile.raw}\n\`\`\`\n\n`;
   }
   
-  // Metadata URIs with IPFS Links
-  md += `## Metadata URIs & IPFS Links\n\n`;
-  if (data.metadataURI) {
-    md += `### IP Metadata URI\n`;
-    md += `- **URI:** ${data.metadataURI}\n`;
-    md += `- **IPFS Hash:** \`${extractIPFSHash(data.metadataURI)}\`\n`;
-    md += `- **IPFS Gateway URL:** https://ipfs.io/ipfs/${extractIPFSHash(data.metadataURI)}\n`;
-    if (data.metadataHash) md += `- **Content Hash:** \`${data.metadataHash}\`\n`;
-    md += `\n`;
-  }
-  
-  if (data.nftTokenURI) {
-    md += `### NFT Token Metadata URI\n`;
-    md += `- **URI:** ${data.nftTokenURI}\n`;
-    md += `- **IPFS Hash:** \`${extractIPFSHash(data.nftTokenURI)}\`\n`;
-    md += `- **IPFS Gateway URL:** https://ipfs.io/ipfs/${extractIPFSHash(data.nftTokenURI)}\n`;
-    if (data.nftMetadataHash) md += `- **Content Hash:** \`${data.nftMetadataHash}\`\n`;
-    md += `\n`;
-  }
-  
-  // License Information
-  if (data.licenseInfo) {
-    md += `## License Information\n\n`;
-    md += `- **License Terms ID:** \`${data.licenseInfo.licenseTermsId}\`\n`;
-    md += `- **License Explorer:** https://aeneid.explorer.story.foundation/license-terms/${data.licenseInfo.licenseTermsId}\n`;
-    md += `- **Amount:** ${data.licenseInfo.amount}\n`;
-    if (data.licenseInfo.mintingFeePaid) md += `- **Minting Fee Paid:** ${data.licenseInfo.mintingFeePaid} WIP\n`;
-    if (data.licenseInfo.unitMintingFee) md += `- **Unit Minting Fee:** ${data.licenseInfo.unitMintingFee} WIP\n`;
-    if (data.licenseInfo.revenueSharePercentage) md += `- **Revenue Share:** ${data.licenseInfo.revenueSharePercentage}%\n`;
-    if (data.licenseInfo.mintedAt) md += `- **Minted At:** ${data.licenseInfo.mintedAt}\n`;
-    if (data.licenseInfo.receiverAddress) md += `- **Receiver:** \`${data.licenseInfo.receiverAddress}\`\n`;
-    if (data.licenseInfo.minterAddress) md += `- **Minter:** \`${data.licenseInfo.minterAddress}\`\n`;
-    if (data.licenseInfo.licenseTokenIds && data.licenseInfo.licenseTokenIds.length > 0) {
-      md += `- **License Token IDs:** ${data.licenseInfo.licenseTokenIds.join(', ')}\n`;
-    }
-    md += `\n`;
-  }
-  
-  // IP Metadata Details (Full JSON from IPFS)
+  // IP Metadata Details (Full JSON from metadataURI)
   if (data.ipMetadata) {
-    md += `## IP Metadata (Complete JSON from IPFS)\n\n`;
+    md += `## IP Metadata (Complete JSON from metadataURI)\n\n`;
     md += `This is the complete metadata stored on IPFS for the IP Asset. It contains all the core information about the intellectual property, including title, description, creators, media references, and AI metadata links.\n\n`;
     md += `**Source URI:** ${data.metadataURI}\n`;
     if (data.metadataHash) md += `**Content Hash:** \`${data.metadataHash}\`\n`;
@@ -521,7 +519,10 @@ export function exportAsMarkdown(data: CompleteIPData): string {
       const parsed = data.ipMetadata.parsed;
       if (parsed.title) md += `- **Title:** ${parsed.title}\n`;
       if (parsed.description) md += `- **Description:** ${parsed.description}\n`;
-      if (parsed.createdAt) md += `- **Created At:** ${new Date(parseInt(parsed.createdAt)).toLocaleString()}\n`;
+      if (parsed.createdAt) {
+        const createdAtDate = new Date(parseInt(parsed.createdAt));
+        md += `- **Created At:** ${createdAtDate.toLocaleString()}\n`;
+      }
       if (parsed.creators && parsed.creators.length > 0) {
         md += `- **Creators:**\n`;
         parsed.creators.forEach((c: any) => {
@@ -531,6 +532,7 @@ export function exportAsMarkdown(data: CompleteIPData): string {
       if (parsed.image) md += `- **Image URL:** ${parsed.image}\n`;
       if (parsed.imageHash) md += `- **Image Hash:** \`${parsed.imageHash}\`\n`;
       if (parsed.mediaUrl) md += `- **Media URL:** ${parsed.mediaUrl}\n`;
+      if (parsed.mediaHash) md += `- **Media Hash:** \`${parsed.mediaHash}\`\n`;
       if (parsed.mediaType) md += `- **Media Type:** ${parsed.mediaType}\n`;
       if (parsed.aiMetadata) {
         md += `- **AI Metadata:**\n`;
@@ -639,19 +641,17 @@ export function exportAsText(data: CompleteIPData): string {
     });
   }
   
-  // Media & Files
-  txt += `MEDIA & FILES\n`;
+  // Media & Files from metadataURI
+  txt += `MEDIA & FILES (from metadataURI)\n`;
   txt += `${'-'.repeat(80)}\n`;
   if (data.image) {
-    txt += `Image URL:       ${data.image.url}\n`;
-    txt += `Image IPFS:      ${data.image.ipfsHash}\n`;
-    txt += `Image Hash:      ${data.image.hash}\n\n`;
+    txt += `Image URL:          ${data.image}\n`;
+    if (data.imageHash) txt += `Image Hash:         ${data.imageHash}\n\n`;
   }
-  if (data.media) {
-    txt += `Media URL:       ${data.media.url}\n`;
-    txt += `Media IPFS:      ${data.media.ipfsHash}\n`;
-    txt += `Media Hash:      ${data.media.hash}\n`;
-    txt += `Media Type:      ${data.media.type}\n\n`;
+  if (data.mediaUrl) {
+    txt += `Media URL:          ${data.mediaUrl}\n`;
+    if (data.mediaHash) txt += `Media Hash:         ${data.mediaHash}\n`;
+    if (data.mediaType) txt += `Media Type:         ${data.mediaType}\n\n`;
   }
   
   // Metadata URIs
@@ -663,21 +663,9 @@ export function exportAsText(data: CompleteIPData): string {
   if (data.nftMetadataHash) txt += `NFT Metadata Hash:   ${data.nftMetadataHash}\n`;
   txt += `\n`;
   
-  // License Information
-  if (data.licenseInfo) {
-    txt += `LICENSE INFORMATION\n`;
-    txt += `${'-'.repeat(80)}\n`;
-    txt += `License Terms ID:    ${data.licenseInfo.licenseTermsId}\n`;
-    txt += `Amount:              ${data.licenseInfo.amount}\n`;
-    if (data.licenseInfo.mintingFeePaid) txt += `Minting Fee Paid:    ${data.licenseInfo.mintingFeePaid} WIP\n`;
-    if (data.licenseInfo.revenueSharePercentage) txt += `Revenue Share:       ${data.licenseInfo.revenueSharePercentage}%\n`;
-    if (data.licenseInfo.mintedAt) txt += `Minted At:           ${data.licenseInfo.mintedAt}\n`;
-    txt += `\n`;
-  }
-  
   // IP Metadata
   if (data.ipMetadata) {
-    txt += `IP METADATA (from IPFS)\n`;
+    txt += `IP METADATA (from metadataURI)\n`;
     txt += `${'-'.repeat(80)}\n`;
     txt += `${data.ipMetadata.raw}\n\n`;
   }
@@ -691,11 +679,23 @@ export function exportAsText(data: CompleteIPData): string {
   
   // Character File
   if (data.characterFile) {
-    txt += `AI CHARACTER FILE\n`;
+    txt += `AI CHARACTER FILE (Complete JSON)\n`;
     txt += `${'-'.repeat(80)}\n`;
     txt += `URL:  ${data.characterFile.url}\n`;
-    txt += `Hash: ${data.characterFile.hash}\n\n`;
+    if (data.characterFile.hash) txt += `Hash: ${data.characterFile.hash}\n\n`;
     txt += `Content:\n${data.characterFile.raw}\n\n`;
+  }
+  
+  // License Information
+  if (data.licenseInfo) {
+    txt += `LICENSE INFORMATION\n`;
+    txt += `${'-'.repeat(80)}\n`;
+    txt += `License Terms ID:    ${data.licenseInfo.licenseTermsId}\n`;
+    txt += `Amount:              ${data.licenseInfo.amount}\n`;
+    if (data.licenseInfo.mintingFeePaid) txt += `Minting Fee Paid:    ${data.licenseInfo.mintingFeePaid} WIP\n`;
+    if (data.licenseInfo.revenueSharePercentage) txt += `Revenue Share:       ${data.licenseInfo.revenueSharePercentage}%\n`;
+    if (data.licenseInfo.mintedAt) txt += `Minted At:           ${data.licenseInfo.mintedAt}\n`;
+    txt += `\n`;
   }
   
   // Dataset Context
