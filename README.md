@@ -4,6 +4,10 @@ Blockchain-powered marketplace for agricultural IoT data with IP protection, aut
 
 ---
 
+**📜 Hardware code:** [https://github.com/juSt-jeLLy/Beluga/blob/main/src/hardwarecodes/robot.ino]
+
+---
+
 ## 🌾 What is BELUGA?
 
 BELUGA is a revolutionary decentralized agricultural data marketplace that transforms raw sensor data from IoT farming robots into valuable, IP-protected digital assets. Built on Story Protocol, the platform enables farmers and data collectors to register their IoT sensor data as IP assets on Story Protocol, create derivative works, and earn royalties from insurers, research laboratories, weather services, and other data consumers.
