@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +27,9 @@ import {
   ChevronUp,
   User,
   Image as ImageIcon,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Percent,
+  CreditCard
 } from "lucide-react";
 import { useAccount } from "wagmi";
 import { useToast } from "@/hooks/use-toast";
@@ -81,11 +82,6 @@ interface DerivativeWithRevenue {
   license_terms_id: string;
   creator_name: string;
   creator_address: string;
-  royalty_recipient: string;
-  royalty_percentage: number;
-  max_minting_fee: number;
-  max_revenue_share: number;
-  max_rts: number;
   transaction_hash: string;
   story_explorer_url?: string;
   metadata_url: string;
@@ -104,6 +100,8 @@ interface DerivativeWithRevenue {
   parent_title?: string;
   parent_location?: string;
   parent_creator_address?: string;
+  parent_revenue_share?: number;
+  parent_minting_fee?: number;
   claimableAmount?: string;
   claiming?: boolean;
 }
@@ -265,11 +263,6 @@ const DatasetRevenueCard = ({ dataset }: { dataset: RegisteredDataset }) => {
           license_terms_id: "",
           creator_name: d.creator_name,
           creator_address: "",
-          royalty_recipient: "",
-          royalty_percentage: 0,
-          max_minting_fee: 0,
-          max_revenue_share: 0,
-          max_rts: 0,
           transaction_hash: "",
           metadata_url: "",
           character_file_url: "",
@@ -807,11 +800,26 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
             {derivative.parent_title && (
               <p className="text-sm text-muted-foreground">{derivative.parent_title}</p>
             )}
-            {derivative.royalty_percentage && (
-              <p className="text-xs text-purple-600 mt-1">
-                Royalty Rate: {derivative.royalty_percentage}%
-              </p>
-            )}
+            
+            {/* Show parent's revenue share and minting fee */}
+            <div className="flex gap-4 mt-2">
+              {derivative.parent_revenue_share !== undefined && (
+                <div className="flex items-center gap-1">
+                  <Percent className="h-3 w-3 text-green-600" />
+                  <span className="text-xs text-green-600">
+                    Parent Revenue Share: {derivative.parent_revenue_share}%
+                  </span>
+                </div>
+              )}
+              {derivative.parent_minting_fee !== undefined && (
+                <div className="flex items-center gap-1">
+                  <CreditCard className="h-3 w-3 text-blue-600" />
+                  <span className="text-xs text-blue-600">
+                    Parent Minting Fee: {derivative.parent_minting_fee} WIP
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex gap-2 pt-4 border-t border-border flex-wrap">
@@ -1037,6 +1045,7 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
   return (
     <>
       <Card 
+        key={license.id}
         className="glass-card hover-lift group animate-slide-in-left overflow-hidden"
         style={{animationDelay: `${index * 0.05}s`}}
       >
@@ -1528,11 +1537,6 @@ const Profile = () => {
           license_terms_id,
           creator_name,
           creator_address,
-          royalty_recipient,
-          royalty_percentage,
-          max_minting_fee,
-          max_revenue_share,
-          max_rts,
           transaction_hash,
           story_explorer_url,
           metadata_url,
@@ -1565,15 +1569,20 @@ const Profile = () => {
         const enrichedDerivatives = await Promise.all(
           result.data.map(async (derivative: any) => {
             let parentInfo = null;
+            let parentRevenueShare = undefined;
+            let parentMintingFee = undefined;
+            
             try {
               const parentResult = await supabaseClient
                 .from('sensor_data')
-                .select('id, type, title, location, creator_address, ip_asset_id')
+                .select('id, type, title, location, creator_address, ip_asset_id, revenue_share, minting_fee')
                 .eq('ip_asset_id', derivative.parent_ip_id)
                 .single();
               
               if (parentResult.data) {
                 parentInfo = parentResult.data;
+                parentRevenueShare = parentResult.data.revenue_share;
+                parentMintingFee = parentResult.data.minting_fee;
               }
             } catch (err) {
               console.log('Parent IP not in our database:', derivative.parent_ip_id);
@@ -1587,11 +1596,6 @@ const Profile = () => {
               license_terms_id: derivative.license_terms_id,
               creator_name: derivative.creator_name,
               creator_address: derivative.creator_address,
-              royalty_recipient: derivative.royalty_recipient,
-              royalty_percentage: derivative.royalty_percentage,
-              max_minting_fee: derivative.max_minting_fee,
-              max_revenue_share: derivative.max_revenue_share,
-              max_rts: derivative.max_rts,
               transaction_hash: derivative.transaction_hash,
               story_explorer_url: derivative.story_explorer_url,
               metadata_url: derivative.metadata_url,
@@ -1610,6 +1614,8 @@ const Profile = () => {
               parent_title: parentInfo?.title,
               parent_location: parentInfo?.location,
               parent_creator_address: parentInfo?.creator_address,
+              parent_revenue_share: parentRevenueShare,
+              parent_minting_fee: parentMintingFee,
               claimableAmount: '0',
               claiming: false,
             };
