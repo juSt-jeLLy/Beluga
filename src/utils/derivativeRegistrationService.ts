@@ -45,10 +45,11 @@ export interface DerivativeRegistrationResult {
   metadataUrl?: string;
   nftTokenId?: string;
   nftContractAddress?: string;
-  paperFileUrl?: string; // Changed from characterFileUrl
-  paperFileHash?: string; // Changed from characterFileHash
+  paperFileUrl?: string;
+  paperFileHash?: string;
   imageUrl?: string;
   imageHash?: string;
+  derivativeTitle?: string; // Add this to return the title
 }
 
 /**
@@ -154,12 +155,12 @@ export async function registerSensorDataAsDerivativeIP(
       throw new Error(`Invalid metadata parameters: ${validation.errors.join(', ')}`);
     }
     
-    // Generate enhanced metadata
+    // Generate enhanced metadata - THIS CREATES THE TITLE
     const { ipMetadata: derivativeIPMeta, nftMetadata: derivativeNFTMeta, displaySensorType } = 
       generateEnhancedDerivativeMetadata(metadataParams);
     
     console.log('Derivative metadata generated:');
-    console.log('Title:', derivativeIPMeta.title);
+    console.log('Title:', derivativeIPMeta.title); // THIS IS THE TITLE
     console.log('Description preview:', derivativeIPMeta.description.substring(0, 200) + '...');
     console.log('Description length:', derivativeIPMeta.description.length, 'characters');
     console.log('NFT attributes count:', derivativeNFTMeta.attributes.length);
@@ -175,7 +176,7 @@ export async function registerSensorDataAsDerivativeIP(
     console.log('Creating IP Metadata with enhanced derivative information...');
     
     const ipMetadata: IpMetadata = client.ipAsset.generateIpMetadata({
-      title: derivativeIPMeta.title,
+      title: derivativeIPMeta.title, // USE THE GENERATED TITLE HERE
       description: derivativeIPMeta.description,
       createdAt: new Date(sensorData.timestamp).getTime().toString(),
       creators: [
@@ -192,7 +193,7 @@ export async function registerSensorDataAsDerivativeIP(
       mediaType: 'image/svg+xml',
       // Add AI metadata
       aiMetadata: {
-        characterFileUrl: paperFileUrl, // Store paper URL in characterFileUrl field
+        characterFileUrl: paperFileUrl,
         characterFileHash: paperFileHashHex,
       },
     });
@@ -281,10 +282,11 @@ export async function registerSensorDataAsDerivativeIP(
       metadataUrl: `https://ipfs.io/ipfs/${ipIpfsHash}`,
       nftTokenId: response.tokenId?.toString(),
       nftContractAddress: SPGNFTContractAddress,
-      paperFileUrl: paperFileUrl, // Changed from characterFileUrl
-      paperFileHash: paperFileHashHex, // Changed from characterFileHash
+      paperFileUrl: paperFileUrl,
+      paperFileHash: paperFileHashHex,
       imageUrl: finalImageUrl,
       imageHash: sensorData.imageHash,
+      derivativeTitle: derivativeIPMeta.title, // RETURN THE TITLE HERE
     };
     
   } catch (error: any) {
@@ -366,15 +368,15 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
           royaltyRecipient: royaltyRecipient || address,
           royaltyPercentage,
           maxMintingFee,
-          sensorDataRecord, // Pass the full record for paper generation
+          sensorDataRecord,
         },
         walletClient
       );
       
-      // 2. Save to database if successful (without royalty params)
+      // 2. Save to database if successful - NOW INCLUDING THE TITLE
       if (registrationResult.success && sensorDataId && supabaseService) {
         try {
-          // Save to derivative_ip_assets table
+          // Save to derivative_ip_assets table WITH THE TITLE
           const derivativeDataResult = await supabaseService.saveDerivativeIPRegistration({
             sensor_data_id: sensorDataId,
             derivative_ip_id: registrationResult.ipId!,
@@ -385,13 +387,14 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
             transaction_hash: registrationResult.txHash!,
             story_explorer_url: registrationResult.storyExplorerUrl,
             metadata_url: registrationResult.metadataUrl,
-            character_file_url: registrationResult.paperFileUrl, // Store paper URL
-            character_file_hash: registrationResult.paperFileHash, // Store paper hash
+            character_file_url: registrationResult.paperFileUrl,
+            character_file_hash: registrationResult.paperFileHash,
             nft_token_id: registrationResult.nftTokenId,
             nft_contract_address: registrationResult.nftContractAddress,
             nft_metadata_url: registrationResult.metadataUrl,
             image_url: registrationResult.imageUrl,
             image_hash: registrationResult.imageHash,
+            derivative_title: registrationResult.derivativeTitle!, // SAVE THE TITLE HERE
           });
           
           if (!derivativeDataResult.success) {
@@ -399,6 +402,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
           } else {
             console.log('✅ Derivative IP with research paper saved to database successfully');
             console.log('Database Record ID:', derivativeDataResult.data?.id);
+            console.log('Saved title:', registrationResult.derivativeTitle);
           }
           
         } catch (dbError: any) {

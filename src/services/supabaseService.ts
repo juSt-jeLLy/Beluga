@@ -1,4 +1,3 @@
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 export interface SensorDataRecord {
@@ -36,22 +35,21 @@ export interface DerivativeIPRecord {
   license_terms_id: string;
   creator_name: string;
   creator_address: string;
-  royalty_recipient?: string;
-  max_revenue_share?: number;
-  max_rts?: number;
   transaction_hash: string;
   story_explorer_url?: string;
   metadata_url?: string;
   character_file_url?: string;
   character_file_hash?: string;
   nft_token_id?: string;
-  nft_contract_address?: string;
+  nft_contract_address: string;
   nft_metadata_url?: string;
   image_url?: string;
   image_hash?: string;
   registered_at?: string;
   created_at?: string;
   updated_at?: string;
+  // NEW: Add title field
+  derivative_title?: string;
 }
 
 export interface DerivativeIPWithParentInfo {
@@ -69,7 +67,7 @@ export interface DerivativeIPWithParentInfo {
   metadata_url?: string;
   registered_at: string;
   derivative_type: string;
-  derivative_title: string;
+  derivative_title: string; // Already exists
   derivative_location?: string;
   derivative_timestamp: string;
   derivative_data: string;
