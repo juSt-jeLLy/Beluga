@@ -257,8 +257,6 @@ export async function registerSensorDataAsDerivativeIP(
       derivData: {
         parentIpIds: [parentIpId],
         licenseTermsIds: [parentLicenseTermsId],
-        maxMintingFee: finalMaxMintingFee,
-        maxRevenueShare: 100, // 100%
         maxRts: 100_000_000, // Max royalty tokens
       },
       royaltyShares: royaltyShares,
@@ -387,9 +385,6 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
             creator_address: address,
             royalty_recipient: royaltyRecipient || address,
             royalty_percentage: royaltyPercentage,
-            max_minting_fee: maxMintingFee || 0,
-            max_revenue_share: 100, // As set in registration
-            max_rts: 100_000_000, // As set in registration
             transaction_hash: registrationResult.txHash!,
             story_explorer_url: registrationResult.storyExplorerUrl,
             metadata_url: registrationResult.metadataUrl,
