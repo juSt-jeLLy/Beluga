@@ -1452,70 +1452,159 @@ const Profile = () => {
     }
   };
 
-  const fetchUserLicenses = async () => {
-    if (!address) return;
+const fetchUserLicenses = async () => {
+  if (!address) return;
 
-    setLoadingLicenses(true);
-    try {
-      const normalizedAddress = address.toLowerCase();
+  setLoadingLicenses(true);
+  try {
+    const normalizedAddress = address.toLowerCase();
+    
+    // Fetch ALL licenses where this address is the receiver (license holder)
+    const licensesResult = await supabaseClient
+      .from('licenses')
+      .select('*')
+      .ilike('receiver_address', normalizedAddress)
+      .order('minted_at', { ascending: false })
+      .limit(100);
+
+    if (licensesResult.error) {
+      throw new Error(licensesResult.error.message);
+    }
+
+    if (licensesResult.data && licensesResult.data.length > 0) {
+      console.log('Found licenses:', licensesResult.data.length);
       
-      const result = await supabaseClient
-        .from('licenses')
-        .select('*')
-        .ilike('receiver_address', normalizedAddress)
-        .order('minted_at', { ascending: false })
-        .limit(100);
+      // For each license, determine if it's for a derivative or original dataset
+      const enrichedLicenses = await Promise.all(
+        licensesResult.data.map(async (license) => {
+          console.log('Processing license:', {
+            id: license.id,
+            ip_asset_id: license.ip_asset_id,
+            sensor_data_id: license.sensor_data_id
+          });
 
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
+          let datasetInfo = null;
+          let isDerivative = false;
 
-      if (result.data && result.data.length > 0) {
-        const sensorDataIds = [...new Set(result.data.map(l => l.sensor_data_id))];
-        
-        const sensorDataResult = await supabaseClient
-          .from('sensor_data')
-          .select('*')
-          .in('id', sensorDataIds);
-        
-        const sensorDataMap = new Map(
-          sensorDataResult.data?.map(sd => [sd.id, sd]) || []
-        );
-        
-        const enrichedLicenses = result.data.map((license) => {
-          const sensorData = sensorDataMap.get(license.sensor_data_id);
-          
+          try {
+            // First, check if this is a derivative by looking in derivative_ip_assets
+            const derivativeResult = await supabaseClient
+              .from('derivative_ip_assets')
+              .select(`
+                id,
+                derivative_title,
+                creator_name,
+                sensor_data_id
+              `)
+              .eq('derivative_ip_id', license.ip_asset_id)
+              .maybeSingle();
+
+            if (derivativeResult.data) {
+              // This is a derivative license!
+              isDerivative = true;
+              const derivative = derivativeResult.data;
+              
+              // Now fetch the sensor data for this derivative
+              let sensorData = null;
+              if (derivative.sensor_data_id) {
+                const sensorDataResult = await supabaseClient
+                  .from('sensor_data')
+                  .select('*')
+                  .eq('id', derivative.sensor_data_id)
+                  .maybeSingle();
+                
+                if (sensorDataResult.data) {
+                  sensorData = sensorDataResult.data;
+                }
+              }
+
+              datasetInfo = {
+                title: derivative.derivative_title || sensorData?.title || 'Untitled Derivative',
+                type: sensorData?.type || 'Unknown',
+                location: sensorData?.location,
+                timestamp: sensorData?.timestamp,
+                data: sensorData?.data,
+                sensor_health: sensorData?.sensor_health,
+                image_hash: sensorData?.image_hash,
+              };
+              
+              console.log('Found derivative license:', {
+                derivative_title: derivative.derivative_title,
+                original_title: sensorData?.title,
+                final_title: datasetInfo.title
+              });
+            } else {
+              // This is an original dataset license - get sensor data
+              const sensorDataResult = await supabaseClient
+                .from('sensor_data')
+                .select('*')
+                .eq('id', license.sensor_data_id)
+                .maybeSingle();
+
+              if (sensorDataResult.data) {
+                datasetInfo = {
+                  title: sensorDataResult.data.title,
+                  type: sensorDataResult.data.type,
+                  location: sensorDataResult.data.location,
+                  timestamp: sensorDataResult.data.timestamp,
+                  data: sensorDataResult.data.data,
+                  sensor_health: sensorDataResult.data.sensor_health,
+                  image_hash: sensorDataResult.data.image_hash,
+                };
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching license metadata:', error);
+          }
+
+          // If we couldn't find dataset info, create a fallback
+          if (!datasetInfo) {
+            datasetInfo = {
+              title: isDerivative ? 'Unknown Derivative' : 'Unknown Dataset',
+              type: 'Unknown',
+              location: undefined,
+              timestamp: undefined,
+              data: undefined,
+              sensor_health: undefined,
+              image_hash: undefined,
+            };
+          }
+
           return {
             ...license,
-            dataset_title: sensorData?.title || 'Unknown Dataset',
-            dataset_type: sensorData?.type || 'Unknown',
-            dataset_location: sensorData?.location || undefined,
-            dataset_data: sensorData?.data || undefined,
-            dataset_timestamp: sensorData?.timestamp || undefined,
-            dataset_sensor_health: sensorData?.sensor_health || undefined,
-            dataset_image_hash: sensorData?.image_hash || undefined,
-            icon: getIconForType(sensorData?.type || 'Unknown'),
-            gradient: getGradientForType(sensorData?.type || 'Unknown'),
+            dataset_title: datasetInfo.title,
+            dataset_type: datasetInfo.type,
+            dataset_location: datasetInfo.location,
+            dataset_data: datasetInfo.data,
+            dataset_timestamp: datasetInfo.timestamp,
+            dataset_sensor_health: datasetInfo.sensor_health,
+            dataset_image_hash: datasetInfo.image_hash,
+            icon: getIconForType(datasetInfo.type),
+            gradient: getGradientForType(datasetInfo.type),
             showMetadata: false,
             metadataLoading: false,
+            is_derivative: isDerivative,
           };
-        });
+        })
+      );
 
-        setLicenses(enrichedLicenses);
-      } else {
-        setLicenses([]);
-      }
-    } catch (error: any) {
-      console.error('Error fetching licenses:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load your licenses",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingLicenses(false);
+      console.log('Enriched licenses:', enrichedLicenses);
+      setLicenses(enrichedLicenses);
+    } else {
+      console.log('No licenses found for address:', normalizedAddress);
+      setLicenses([]);
     }
-  };
+  } catch (error: any) {
+    console.error('Error fetching licenses:', error);
+    toast({
+      title: "Error",
+      description: "Failed to load your licenses",
+      variant: "destructive",
+    });
+  } finally {
+    setLoadingLicenses(false);
+  }
+};
 
 const fetchUserDerivatives = async () => {
   if (!address) {
