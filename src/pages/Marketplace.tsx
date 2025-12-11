@@ -221,106 +221,107 @@ const Marketplace = () => {
     }
   };
 
-  const fetchDerivativeDatasets = async () => {
-    setLoadingDerivatives(true);
-    try {
-      // First fetch derivatives
-      const result = await supabaseClient
-        .from('derivative_ip_with_parent_info')
+const fetchDerivativeDatasets = async () => {
+  setLoadingDerivatives(true);
+  try {
+    // Fetch derivatives directly from the table
+    const { data: derivativesData, error: derivativesError } = await supabaseClient
+      .from('derivative_ip_assets')
+      .select('*')
+      .order('registered_at', { ascending: false })
+      .limit(50);
+
+    if (derivativesError) throw new Error(derivativesError.message);
+
+    if (derivativesData && derivativesData.length > 0) {
+      console.log('Found derivatives:', derivativesData);
+      
+      // Get all parent sensor data IDs
+      const sensorDataIds = derivativesData.map(d => d.sensor_data_id);
+      const uniqueSensorDataIds = [...new Set(sensorDataIds)];
+      
+      // Fetch parent sensor data
+      const { data: parentData, error: parentError } = await supabaseClient
+        .from('sensor_data')
         .select('*')
-        .order('registered_at', { ascending: false })
-        .limit(50);
-
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
-
-      if (result.data && result.data.length > 0) {
-        console.log('Found derivatives for marketplace:', result.data);
-        
-        // Get all parent IP IDs to fetch their revenue share and minting fee
-        const parentIpIds = result.data.map((derivative: any) => derivative.parent_ip_id);
-        const uniqueParentIpIds = [...new Set(parentIpIds)];
-        
-        // Fetch parent IP details to get revenue share and minting fee
-        const parentDetails = new Map<string, { revenue_share?: number; minting_fee?: number }>();
-        
-        if (uniqueParentIpIds.length > 0) {
-          const { data: parentData, error: parentError } = await supabaseClient
-            .from('sensor_data')
-            .select('ip_asset_id, revenue_share, minting_fee')
-            .in('ip_asset_id', uniqueParentIpIds);
-          
-          if (!parentError && parentData) {
-            parentData.forEach(parent => {
-              if (parent.ip_asset_id) {
-                parentDetails.set(parent.ip_asset_id, {
-                  revenue_share: parent.revenue_share,
-                  minting_fee: parent.minting_fee
-                });
-              }
-            });
-          }
-        }
-        
-        const transformedDerivatives: DerivativeDataset[] = result.data.map((derivative: any) => {
-          const dataPreview = derivative.derivative_data && derivative.derivative_data.length > 100 
-            ? derivative.derivative_data.substring(0, 100) + '...' 
-            : 'Derivative dataset based on parent IP asset';
-          
-          // Get parent revenue share and minting fee
-          const parentInfo = parentDetails.get(derivative.parent_ip_id);
-          
-          return {
-            id: derivative.id,
-            derivative_ip_id: derivative.derivative_ip_id,
-            parent_ip_id: derivative.parent_ip_id,
-            title: derivative.derivative_title || `Derivative #${derivative.id}`,
-            description: `Derivative ${derivative.derivative_type || 'dataset'} based on parent IP. ${dataPreview}`,
-            type: derivative.derivative_type || 'derivative',
-            location: derivative.derivative_location,
-            timestamp: derivative.derivative_timestamp || derivative.registered_at,
-            registered_at: derivative.registered_at,
-            creator_address: derivative.creator_address,
-            creator_name: derivative.creator_name || 'Anonymous Creator',
-            royalty_percentage: derivative.royalty_percentage,
-            story_explorer_url: derivative.story_explorer_url,
-            icon: getIconForType(derivative.derivative_type || 'derivative'),
-            gradient: getGradientForType(derivative.derivative_type || 'derivative'),
-            sensor_data_id: derivative.sensor_data_id,
-            license_terms_id: derivative.license_terms_id,
-            parent_dataset_title: derivative.parent_title,
-            parent_dataset_type: derivative.parent_type,
-            parent_location: derivative.parent_location,
-            showMetadata: false,
-            metadataLoading: false,
-            parent_revenue_share: parentInfo?.revenue_share,
-            parent_minting_fee: parentInfo?.minting_fee,
-          };
-        });
-
-        setDerivatives(transformedDerivatives);
-        
-        toast({
-          title: "Derivatives Loaded",
-          description: `Found ${transformedDerivatives.length} derivative datasets available for licensing`,
-        });
-      } else {
-        setDerivatives([]);
-        console.log('No derivatives found in the marketplace');
-      }
-    } catch (error: any) {
-      console.error('Error fetching derivative datasets:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load derivative datasets",
-        variant: "destructive",
+        .in('id', uniqueSensorDataIds);
+      
+      if (parentError) throw new Error(parentError.message);
+      
+      // Create a map for easy lookup
+      const parentMap = new Map();
+      parentData?.forEach(parent => {
+        parentMap.set(parent.id, parent);
       });
+      
+      const transformedDerivatives: DerivativeDataset[] = derivativesData.map((derivative: any) => {
+        const parent = parentMap.get(derivative.sensor_data_id);
+        
+        const dataPreview = parent?.data && parent.data.length > 100 
+          ? parent.data.substring(0, 100) + '...' 
+          : 'Derivative dataset based on parent IP asset';
+        
+        // Use the derivative_title from the database - it's populated!
+        const title = derivative.derivative_title || 
+                     `Derivative ${parent?.type || 'dataset'}`;
+        
+        console.log('Processing derivative:', {
+          id: derivative.id,
+          derivative_title: derivative.derivative_title,
+          parent_type: parent?.type,
+          final_title: title
+        });
+        
+        return {
+          id: derivative.id,
+          derivative_ip_id: derivative.derivative_ip_id,
+          parent_ip_id: derivative.parent_ip_id,
+          title: title, // This should now show the proper title
+          description: `${title} based on parent IP. ${dataPreview}`,
+          type: parent?.type || 'derivative',
+          location: parent?.location,
+          timestamp: parent?.timestamp || derivative.registered_at,
+          registered_at: derivative.registered_at,
+          creator_address: derivative.creator_address,
+          creator_name: derivative.creator_name || 'Anonymous Creator',
+          royalty_percentage: derivative.royalty_percentage,
+          story_explorer_url: derivative.story_explorer_url,
+          icon: getIconForType(parent?.type || 'derivative'),
+          gradient: getGradientForType(parent?.type || 'derivative'),
+          sensor_data_id: derivative.sensor_data_id,
+          license_terms_id: derivative.license_terms_id,
+          parent_dataset_title: parent?.title,
+          parent_dataset_type: parent?.type,
+          parent_location: parent?.location,
+          showMetadata: false,
+          metadataLoading: false,
+          parent_revenue_share: parent?.revenue_share,
+          parent_minting_fee: parent?.minting_fee,
+        };
+      });
+
+      setDerivatives(transformedDerivatives);
+      
+      toast({
+        title: "Derivatives Loaded",
+        description: `Found ${transformedDerivatives.length} derivative datasets available for licensing`,
+      });
+    } else {
       setDerivatives([]);
-    } finally {
-      setLoadingDerivatives(false);
+      console.log('No derivatives found in the marketplace');
     }
-  };
+  } catch (error: any) {
+    console.error('Error fetching derivative datasets:', error);
+    toast({
+      title: "Error",
+      description: "Failed to load derivative datasets",
+      variant: "destructive",
+    });
+    setDerivatives([]);
+  } finally {
+    setLoadingDerivatives(false);
+  }
+};
 
   const decodeJsonString = (jsonString?: string) => {
     if (!jsonString) return null;

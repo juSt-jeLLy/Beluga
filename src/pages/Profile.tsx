@@ -1517,133 +1517,169 @@ const Profile = () => {
     }
   };
 
-  const fetchUserDerivatives = async () => {
-    if (!address) {
-      console.log('No address available for fetching derivatives');
-      return;
+const fetchUserDerivatives = async () => {
+  if (!address) {
+    console.log('No address available for fetching derivatives');
+    return;
+  }
+
+  setLoadingDerivatives(true);
+  try {
+    const normalizedAddress = address.toLowerCase();
+    console.log('Fetching derivatives for address:', normalizedAddress);
+    
+    // First, let's try a simpler approach - fetch directly from the derivative_ip_assets table
+    const result = await supabaseClient
+      .from('derivative_ip_assets')
+      .select('*')  // Select all columns
+      .ilike('creator_address', normalizedAddress)
+      .order('registered_at', { ascending: false });
+
+    console.log('Raw derivatives query result:', {
+      data: result.data,
+      error: result.error,
+      count: result.data?.length
+    });
+
+    if (result.error) {
+      console.error('Error fetching derivatives:', result.error);
+      throw new Error(result.error.message);
     }
 
-    setLoadingDerivatives(true);
-    try {
-      const normalizedAddress = address.toLowerCase();
+    if (result.data && result.data.length > 0) {
+      console.log('Found derivatives in table:', result.data.length, 'records');
       
-      const result = await supabaseClient
-        .from('derivative_ip_assets')
-        .select(`
-          id,
-          sensor_data_id,
-          derivative_ip_id,
-          parent_ip_id,
-          license_terms_id,
-          creator_name,
-          creator_address,
-          transaction_hash,
-          story_explorer_url,
-          metadata_url,
-          character_file_url,
-          nft_token_id,
-          nft_contract_address,
-          image_url,
-          registered_at,
-          created_at,
-          sensor_data:sensor_data!sensor_data_id (
-            id,
-            type,
-            title,
-            location,
-            timestamp,
-            data,
-            sensor_health,
-            creator_address
-          )
-        `)
-        .ilike('creator_address', normalizedAddress)
-        .order('registered_at', { ascending: false });
+      // Process each derivative
+      const enrichedDerivatives = await Promise.all(
+        result.data.map(async (derivative: any) => {
+          console.log('Processing derivative record:', {
+            id: derivative.id,
+            derivative_title: derivative.derivative_title,
+            parent_ip_id: derivative.parent_ip_id,
+            creator_name: derivative.creator_name
+          });
 
-      if (result.error) {
-        console.error('Error fetching derivatives:', result.error);
-        throw new Error(result.error.message);
-      }
-
-      if (result.data && result.data.length > 0) {
-        const enrichedDerivatives = await Promise.all(
-          result.data.map(async (derivative: any) => {
-            let parentInfo = null;
-            let parentRevenueShare = undefined;
-            let parentMintingFee = undefined;
-            
+          // Try to fetch parent information from sensor_data table
+          let parentInfo = null;
+          let parentRevenueShare = undefined;
+          let parentMintingFee = undefined;
+          
+          if (derivative.parent_ip_id) {
             try {
+              console.log('Looking for parent IP:', derivative.parent_ip_id);
               const parentResult = await supabaseClient
                 .from('sensor_data')
                 .select('id, type, title, location, creator_address, ip_asset_id, revenue_share, minting_fee')
                 .eq('ip_asset_id', derivative.parent_ip_id)
-                .single();
+                .maybeSingle(); // Use maybeSingle instead of single
               
               if (parentResult.data) {
                 parentInfo = parentResult.data;
                 parentRevenueShare = parentResult.data.revenue_share;
                 parentMintingFee = parentResult.data.minting_fee;
+                console.log('Found parent info:', parentInfo);
+              } else {
+                console.log('No parent found for IP:', derivative.parent_ip_id);
               }
             } catch (err) {
-              console.log('Parent IP not in our database:', derivative.parent_ip_id);
+              console.log('Error fetching parent IP:', err);
             }
+          }
 
-            return {
-              id: derivative.id,
-              sensor_data_id: derivative.sensor_data_id,
-              derivative_ip_id: derivative.derivative_ip_id,
-              parent_ip_id: derivative.parent_ip_id,
-              license_terms_id: derivative.license_terms_id,
-              creator_name: derivative.creator_name,
-              creator_address: derivative.creator_address,
-              transaction_hash: derivative.transaction_hash,
-              story_explorer_url: derivative.story_explorer_url,
-              metadata_url: derivative.metadata_url,
-              character_file_url: derivative.character_file_url,
-              nft_token_id: derivative.nft_token_id,
-              nft_contract_address: derivative.nft_contract_address,
-              image_url: derivative.image_url,
-              registered_at: derivative.registered_at,
-              created_at: derivative.created_at,
-              derivative_type: derivative.sensor_data?.type || 'Unknown',
-              derivative_title: derivative.sensor_data?.title || 'Untitled Derivative',
-              derivative_location: derivative.sensor_data?.location,
-              derivative_timestamp: derivative.sensor_data?.timestamp,
-              derivative_data: derivative.sensor_data?.data,
-              parent_type: parentInfo?.type,
-              parent_title: parentInfo?.title,
-              parent_location: parentInfo?.location,
-              parent_creator_address: parentInfo?.creator_address,
-              parent_revenue_share: parentRevenueShare,
-              parent_minting_fee: parentMintingFee,
-              claimableAmount: '0',
-              claiming: false,
-            };
-          })
-        );
+          // Fetch sensor data if sensor_data_id exists
+          let sensorData = null;
+          if (derivative.sensor_data_id) {
+            try {
+              const sensorResult = await supabaseClient
+                .from('sensor_data')
+                .select('*')
+                .eq('id', derivative.sensor_data_id)
+                .maybeSingle();
+              
+              if (sensorResult.data) {
+                sensorData = sensorResult.data;
+              }
+            } catch (err) {
+              console.log('Error fetching sensor data:', err);
+            }
+          }
 
-        setDerivatives(enrichedDerivatives);
+          // Use the derivative_title from the database, fallback to parent title, then fallback to generic name
+          let derivativeTitle = derivative.derivative_title;
+          
+          if (!derivativeTitle && parentInfo?.title) {
+            derivativeTitle = `Derivative of ${parentInfo.title}`;
+          }
+          
+          if (!derivativeTitle) {
+            derivativeTitle = `Derivative #${derivative.id}`;
+          }
 
-        toast({
-          title: "Derivatives Loaded",
-          description: `Found ${enrichedDerivatives.length} derivatives you created`,
-        });
-      } else {
-        console.log('No derivatives found created by:', normalizedAddress);
-        setDerivatives([]);
-      }
-    } catch (error: any) {
-      console.error('Error fetching derivatives:', error);
+          // Determine derivative type - use sensor data type or parent type
+          let derivativeType = sensorData?.type || parentInfo?.type || 'Unknown';
+
+          console.log('Final derivative info:', {
+            title: derivativeTitle,
+            type: derivativeType
+          });
+
+          return {
+            id: derivative.id,
+            sensor_data_id: derivative.sensor_data_id,
+            derivative_ip_id: derivative.derivative_ip_id,
+            parent_ip_id: derivative.parent_ip_id,
+            license_terms_id: derivative.license_terms_id,
+            creator_name: derivative.creator_name,
+            creator_address: derivative.creator_address,
+            transaction_hash: derivative.transaction_hash,
+            story_explorer_url: derivative.story_explorer_url,
+            metadata_url: derivative.metadata_url,
+            character_file_url: derivative.character_file_url,
+            nft_token_id: derivative.nft_token_id,
+            nft_contract_address: derivative.nft_contract_address,
+            image_url: derivative.image_url,
+            registered_at: derivative.registered_at,
+            created_at: derivative.created_at,
+            derivative_type: derivativeType,
+            derivative_title: derivativeTitle,
+            derivative_location: sensorData?.location || parentInfo?.location,
+            derivative_timestamp: sensorData?.timestamp,
+            derivative_data: sensorData?.data,
+            parent_type: parentInfo?.type,
+            parent_title: parentInfo?.title,
+            parent_location: parentInfo?.location,
+            parent_creator_address: parentInfo?.creator_address,
+            parent_revenue_share: parentRevenueShare,
+            parent_minting_fee: parentMintingFee,
+            claimableAmount: '0',
+            claiming: false,
+          };
+        })
+      );
+
+      console.log('Enriched derivatives:', enrichedDerivatives);
+      setDerivatives(enrichedDerivatives);
+
       toast({
-        title: "Error",
-        description: error.message || "Failed to load derivatives",
-        variant: "destructive",
+        title: "Derivatives Loaded",
+        description: `Found ${enrichedDerivatives.length} derivatives you created`,
       });
+    } else {
+      console.log('No derivatives found in database for address:', normalizedAddress);
       setDerivatives([]);
-    } finally {
-      setLoadingDerivatives(false);
     }
-  };
+  } catch (error: any) {
+    console.error('Error fetching derivatives:', error);
+    toast({
+      title: "Error",
+      description: error.message || "Failed to load derivatives",
+      variant: "destructive",
+    });
+    setDerivatives([]);
+  } finally {
+    setLoadingDerivatives(false);
+  }
+};
 
   const fetchTotalLicenses = async (datasetIds: number[]) => {
     if (datasetIds.length === 0) {
