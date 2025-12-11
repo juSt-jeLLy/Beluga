@@ -1,7 +1,7 @@
 // src/utils/ipMetadataDownloadService.ts
 import { Address } from 'viem';
 import { useState } from 'react';
-import { getEnrichedMetadata, type EnrichedIPMetadata, getMetadataURI } from './coreMetadataViewService';
+import { getEnrichedMetadata, type EnrichedIPMetadata, getMetadataURI, getOwner, getRegistrationDate } from './coreMetadataViewService';
 import axios from 'axios';
 
 export interface CompleteIPData {
@@ -32,10 +32,7 @@ export interface CompleteIPData {
   mediaType?: string;
   
   metadataURI?: string;
-  nftTokenURI?: string;
-  
   metadataHash?: string;
-  nftMetadataHash?: string;
   
   ipMetadata?: {
     raw: string;
@@ -122,34 +119,31 @@ export async function fetchCompleteIPMetadata(
   datasetContext?: any
 ): Promise<CompleteIPData> {
   try {
-    let metadataURI: string | null = null;
-    let owner: Address = '0x0000000000000000000000000000000000000000' as Address;
-    let registrationDate: bigint = 0n;
-    let metadataHash: string = '';
+    // Fetch metadata URI
+    const metadataURI = await getMetadataURI(ipAssetId);
     
-    try {
-      metadataURI = await getMetadataURI(ipAssetId);
-      
-      const coreMetadata = await getEnrichedMetadata(ipAssetId);
-      owner = coreMetadata.owner || '0x0000000000000000000000000000000000000000' as Address;
-      registrationDate = coreMetadata.registrationDate || 0n;
-      metadataHash = coreMetadata.metadataHash || '';
-    } catch (error: any) {
-      metadataURI = null;
-    }
+    // Fetch owner directly
+    const owner = await getOwner(ipAssetId);
     
+    // Fetch registration date directly
+    const registrationDate = await getRegistrationDate(ipAssetId);
+    
+    // Fetch metadata hash
+    const coreMetadata = await getEnrichedMetadata(ipAssetId);
+    const metadataHash = coreMetadata.metadataHash;
+    
+    // Fetch IP metadata from metadataURI
     let ipMetadataFromURI: any = null;
     if (metadataURI) {
       const ipMetadataResult = await fetchFromIPFS(metadataURI);
       if (ipMetadataResult.parsed) {
         ipMetadataFromURI = ipMetadataResult.parsed;
       }
-    } else {
-      ipMetadataFromURI = {};
     }
     
     const ipMetadataDetails = ipMetadataFromURI || {};
     
+    // Fetch Character File from aiMetadata
     let characterFile: { url: string; hash: string; raw: string; parsed: any } | undefined;
     const characterFileUrl = ipMetadataDetails.aiMetadata?.characterFileUrl;
     const characterFileHash = ipMetadataDetails.aiMetadata?.characterFileHash;
@@ -167,10 +161,6 @@ export async function fetchCompleteIPMetadata(
         // Silently fail, characterFile will remain undefined
       }
     }
-    
-    const registrationDateObj = registrationDate 
-      ? new Date(Number(registrationDate) * 1000)
-      : new Date();
     
     const creators = ipMetadataDetails.creators || [];
     
@@ -196,7 +186,8 @@ export async function fetchCompleteIPMetadata(
              'Untitled IP Asset',
       description: ipMetadataDetails.description || '',
       
-      registrationDate: registrationDateObj.toLocaleString('en-US', {
+      // Format the registration date from getRegistrationDate function
+      registrationDate: registrationDate.toLocaleString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -204,7 +195,7 @@ export async function fetchCompleteIPMetadata(
         minute: '2-digit',
         timeZoneName: 'short'
       }),
-      registeredTimestamp: registrationDateObj.toISOString(),
+      registeredTimestamp: registrationDate.toISOString(),
       owner: owner,
       
       location: datasetContext?.location,
@@ -357,7 +348,7 @@ export function exportAsText(data: CompleteIPData): string {
   txt += `${'-'.repeat(80)}\n`;
   txt += `Title:              ${data.title}\n`;
   txt += `IP Asset ID:        ${data.ipAssetId}\n`;
-  txt += `Owner:              ${data.owner === '0x0000000000000000000000000000000000000000' ? 'Not Available' : data.owner}\n`;
+  txt += `Owner:              ${data.owner}\n`;
   txt += `Registration Date:  ${data.registrationDate}\n`;
   txt += `Timestamp:          ${data.registeredTimestamp}\n\n`;
   
