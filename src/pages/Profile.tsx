@@ -39,6 +39,14 @@ import {
   useClaimableRevenue,
   useRevenueClaimingFromDerivatives 
 } from "@/utils/revenueClaimingService";
+import { Download } from "lucide-react";
+import { useIPMetadataDownload } from "@/utils/ipMetadataDownloadService";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Address, zeroAddress } from "viem";
 import { ClaimRevenueDialog } from "@/components/ClaimRevenueDialog";
 import { getEnrichedMetadata, type EnrichedIPMetadata } from "@/utils/coreMetadataViewService";
@@ -910,9 +918,12 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
   );
 };
 
-// Component for License Card with Pay Royalty to IP functionality
+
+// LicenseCard Component - Updated without JSON option
 const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps) => {
   const { payRoyalty, paying: payingRoyalty, isConnected } = useRoyaltyPayment();
+  const { downloadMetadata, downloading: downloadingMetadata } = useIPMetadataDownload();
+  
   const [royaltyDialogOpen, setRoyaltyDialogOpen] = useState(false);
   const [royaltySuccess, setRoyaltySuccess] = useState(false);
   const [royaltyTxHash, setRoyaltyTxHash] = useState<string>("");
@@ -962,6 +973,64 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
         setRoyaltyTxHash("");
         setRoyaltyAmount("");
       }, 300);
+    }
+  };
+
+  // Handle download in different formats (now only markdown or text)
+  const handleDownload = async (format: 'markdown' | 'text') => {
+    try {
+      // Prepare license data
+      const licenseData = {
+        license_terms_id: license.license_terms_id,
+        amount: license.amount,
+        minting_fee_paid: license.minting_fee_paid,
+        unit_minting_fee: license.unit_minting_fee,
+        revenue_share_percentage: license.revenue_share_percentage,
+        license_token_ids: license.license_token_ids,
+        minted_at: license.minted_at,
+        receiver_address: license.receiver_address,
+        minter_address: license.minter_address,
+      };
+      
+      // Prepare dataset context
+      const datasetContext = {
+        id: license.sensor_data_id,
+        title: license.dataset_title,
+        type: license.dataset_type,
+        location: license.dataset_location,
+        data: license.dataset_data,
+        timestamp: license.dataset_timestamp,
+        sensor_health: license.dataset_sensor_health,
+        image_hash: license.dataset_image_hash,
+        source: 'gmail' as const,
+      };
+      
+      const success = await downloadMetadata(
+        license.ip_asset_id as Address,
+        format,
+        licenseData,
+        datasetContext
+      );
+      
+      if (success) {
+        toast({
+          title: "Download Complete",
+          description: `IP metadata downloaded as ${format.toUpperCase()}`,
+        });
+      } else {
+        toast({
+          title: "Download Failed",
+          description: "Failed to download IP metadata",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('Download error:', error);
+      toast({
+        title: "Download Error",
+        description: error.message || "An error occurred during download",
+        variant: "destructive",
+      });
     }
   };
 
@@ -1072,7 +1141,7 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
             )}
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons Row 1 */}
           <div className="flex gap-2 pt-2">
             {/* Pay Royalty to IP Button */}
             <Button 
@@ -1117,6 +1186,54 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
             </Button>
           </div>
 
+          {/* Action Buttons Row 2 - Download and View */}
+          <div className="flex gap-2">
+            {/* Download Button with Format Options */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 border-green-500/50 text-green-600 hover:bg-green-500/10 text-xs h-8"
+                  disabled={downloadingMetadata}
+                >
+                  {downloadingMetadata ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-3 w-3 mr-1" />
+                      Download IP Data
+                    </>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => handleDownload('markdown')}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Download as Markdown (.md)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDownload('text')}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Download as Text (.txt)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* View IP Button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="flex-1 border-purple-500/50 text-purple-600 text-xs h-8"
+              onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank')}
+            >
+              <ExternalLink className="h-3 w-3 mr-1" />
+              View IP
+            </Button>
+          </div>
+
           {/* Metadata Display */}
           {license.showMetadata && license.metadata && (
             <div className="space-y-3 pt-3 border-t border-border">
@@ -1147,7 +1264,7 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
                 </div>
               )}
 
-              {license.metadata.owner && (
+              {license.metadata.owner && license.metadata.owner !== '0x0000000000000000000000000000000000000000' && (
                 <div className="bg-primary/5 p-2 rounded border border-primary/20">
                   <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                     <User className="h-3 w-3" />
@@ -1203,28 +1320,18 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
             </div>
           )}
           
-          <div className="flex gap-2 pt-2">
-            {license.story_explorer_tx_url && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="flex-1 border-primary/50 text-xs h-8"
-                onClick={() => window.open(license.story_explorer_tx_url, '_blank')}
-              >
-                <ExternalLink className="h-3 w-3 mr-1" />
-                View TX
-              </Button>
-            )}
+          {/* View Transaction Button */}
+          {license.story_explorer_tx_url && (
             <Button 
               variant="outline" 
               size="sm"
-              className="flex-1 border-purple-500/50 text-purple-600 text-xs h-8"
-              onClick={() => window.open(`https://aeneid.explorer.story.foundation/ipa/${license.ip_asset_id}`, '_blank')}
+              className="w-full border-primary/50 text-xs h-8"
+              onClick={() => window.open(license.story_explorer_tx_url, '_blank')}
             >
               <ExternalLink className="h-3 w-3 mr-1" />
-              View IP
+              View Transaction
             </Button>
-          </div>
+          )}
         </CardContent>
       </Card>
 
