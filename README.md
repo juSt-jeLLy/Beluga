@@ -82,7 +82,7 @@ Unlike traditional data brokers or cloud platforms, BELUGA provides:
 
 ---
 
-## Process Flow
+## 🔄 Process Flow
 
 ```
 
@@ -248,6 +248,53 @@ Unlike traditional data brokers or cloud platforms, BELUGA provides:
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 📁 Project Structure
+
+```
+
+src/
+├── components/           # React components
+│   ├── ui/              # Shadcn UI components
+│   ├── ClaimRevenueDialog.tsx
+│   ├── DerivativeIPRegistrationDialog.tsx
+│   ├── DerivativeSuccessDialog.tsx
+│   ├── IPRegistrationDialog.tsx
+│   ├── MintLicenseDialog.tsx
+│   ├── MintSuccessDialog.tsx
+│   ├── Navbar.tsx
+│   └── PayRoyaltyDialog.tsx
+│
+├── pages/               # Route pages
+│   ├── Index.tsx        # Landing page
+│   ├── DataExtraction.tsx
+│   ├── Marketplace.tsx
+│   ├── Derivatives.tsx
+│   ├── Profile.tsx
+│   └── NotFound.tsx
+│
+├── services/            # External service integrations
+│   ├── gmailService.ts  # Gmail API wrapper
+│   ├── blynkService.ts  # Blynk Cloud integration
+│   ├── supabaseService.ts # Database operations
+│   └── Web3Providers.tsx
+│
+├── utils/               # Utility functions & services
+│   ├── config.ts        # Story Protocol configuration
+│   ├── ipRegistrationService.ts
+│   ├── derivativeRegistrationService.ts
+│   ├── licenseMintingService.ts
+│   ├── revenueClaimingService.ts
+│   ├── royaltyPaymentService.ts
+│   ├── paperGenerationService.ts
+│   ├── derivativeMetadataService.ts
+│   ├── coreMetadataViewService.ts
+│   ├── ipMetadataDownloadService.ts
+│   ├── uploadToIpfs.ts
+│   └── generateCharacterFile.ts
+│
+└── abis/                # Smart contract ABIs
+    └── CoreMetadataViewModuleABI.ts
+```
 
 ### Installation
 
