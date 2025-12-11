@@ -225,25 +225,7 @@ export default function DerivativeIPRegistrationDialog({
       return;
     }
 
-    const percentageNum = parseFloat(royaltyPercentage);
-    if (isNaN(percentageNum) || percentageNum < 0 || percentageNum > 100) {
-      toast({
-        title: 'Invalid Royalty Percentage',
-        description: 'Royalty percentage must be between 0 and 100',
-        variant: 'destructive',
-      });
-      return;
-    }
 
-    const mintingFeeNum = parseFloat(maxMintingFee);
-    if (isNaN(mintingFeeNum) || mintingFeeNum < 0) {
-      toast({
-        title: 'Invalid Minting Fee',
-        description: 'Minting fee must be a positive number',
-        variant: 'destructive',
-      });
-      return;
-    }
 
     if (!isConnected) {
       toast({
@@ -281,8 +263,6 @@ export default function DerivativeIPRegistrationDialog({
         parentIpAssetId as Address,
         BigInt(licenseTermsId),
         royaltyRecipient.trim() ? royaltyRecipient.trim() as Address : undefined,
-        percentageNum,
-        mintingFeeNum,
         sensorDataId
       );
 
@@ -451,50 +431,7 @@ export default function DerivativeIPRegistrationDialog({
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="royalty-percentage" className="text-xs font-semibold">
-                      Royalty %
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="royalty-percentage"
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={royaltyPercentage}
-                        onChange={(e) => setRoyaltyPercentage(e.target.value)}
-                        className="h-11 border-2 border-primary/20 focus:border-primary pr-8"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Revenue share
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="max-minting-fee" className="text-xs font-semibold">
-                      Max Minting Fee
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="max-minting-fee"
-                        type="number"
-                        min="0"
-                        step="0.001"
-                        value={maxMintingFee}
-                        onChange={(e) => setMaxMintingFee(e.target.value)}
-                        className="h-11 border-2 border-primary/20 focus:border-primary pr-12"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">WIP</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Maximum fee
-                    </p>
-                  </div>
-                </div>
+               
               </div>
 
               <div className="p-4 rounded-xl bg-muted/30 border border-border">
