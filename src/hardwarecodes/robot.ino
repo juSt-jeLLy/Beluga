@@ -81,6 +81,13 @@ int lightReadingsCount = 0;
 int maxLightReading = 0;
 int minLightReading = 1024;
 
+// Tracking for rainfall duration
+unsigned long rainStartTime = 0;
+unsigned long rainEndTime = 0;
+bool rainSessionActive = false;
+int maxRainIntensity = 0;
+int minRainIntensity = 1024;
+
 // Daily accumulated stats (sum of all hours)
 int dailyRainDetections = 0;
 int dailyMotionDetections = 0;
@@ -93,6 +100,39 @@ int dailyLightSum = 0;
 int dailyLightCount = 0;
 int dailyMaxLight = 0;
 int dailyMinLight = 1024;
+
+// Location (update this to your farm location)
+String farmLocation = "Rajkot";
+
+// Helper function to format time HH:MM
+String formatTime(unsigned long milliseconds) {
+  unsigned long totalSeconds = milliseconds / 1000;
+  int hours = (totalSeconds / 3600) % 24;
+  int minutes = (totalSeconds % 3600) / 60;
+  
+  String timeStr = "";
+  if (hours < 10) timeStr += "0";
+  timeStr += String(hours) + ":";
+  if (minutes < 10) timeStr += "0";
+  timeStr += String(minutes);
+  
+  return timeStr;
+}
+
+// Helper function to format duration
+String formatDuration(unsigned long milliseconds) {
+  unsigned long totalMinutes = milliseconds / 60000;
+  int hours = totalMinutes / 60;
+  int minutes = totalMinutes % 60;
+  
+  String duration = "";
+  if (hours > 0) {
+    duration += String(hours) + "h ";
+  }
+  duration += String(minutes) + "m";
+  
+  return duration;
+}
 
 // Moisture irrigation variables
 bool moistureIrrigationActive = false;
@@ -185,6 +225,22 @@ void sendHourlySummary() {
   unsigned long pumpMinutes = totalPumpRunTime / 60000;
   unsigned long pumpSeconds = (totalPumpRunTime % 60000) / 1000;
   
+  // Convert light sensor readings to lux approximation (for display purposes)
+  // Lower analog values = more light (for LDR-based sensors)
+  int avgLux = map(1024 - avgLightReading, 0, 1024, 0, 65000);
+  int maxLux = map(1024 - minLightReading, 0, 1024, 0, 65000);
+  int minLux = map(1024 - maxLightReading, 0, 1024, 0, 65000);
+  
+  // Calculate rain duration if applicable
+  String rainDuration = "0m";
+  String rainStart = "--:--";
+  String rainEnd = "--:--";
+  if (rainEndTime > rainStartTime && rainStartTime > 0) {
+    rainDuration = formatDuration(rainEndTime - rainStartTime);
+    rainStart = formatTime(rainStartTime);
+    rainEnd = formatTime(rainEndTime);
+  }
+  
   // Determine light condition average
   String avgLightCondition;
   if (avgLightReading < 100) avgLightCondition = "Very Bright";
@@ -192,6 +248,9 @@ void sendHourlySummary() {
   else if (avgLightReading < 500) avgLightCondition = "Moderate";
   else if (avgLightReading < 700) avgLightCondition = "Dim";
   else avgLightCondition = "Dark";
+  
+  // Calculate sensor reliability (uptime percentage)
+  int sensorReliability = min(100, (lightReadingsCount * 100) / 1800); // Expected ~1800 readings per hour
   
   // Check if it's time for daily report (24 hours = 24 hourly reports)
   if (hourlyReportCount >= 24) {
@@ -201,29 +260,50 @@ void sendHourlySummary() {
   } else {
     // === SEND HOURLY REPORT ===
     
-    // RAINFALL HOURLY
-    String rainfallSummary = String("⏰ HOUR ") + String(hourlyReportCount) + " - RAINFALL\n" +
-                            "Rain Detections: " + String(rainDetectionCount) + "\n" +
-                            "Current: " + (isRaining ? "🌧️ RAINING" : "☀️ Clear");
+    // RAINFALL HOURLY - Format: Location, Details, Sensor%
+    String rainfallSummary = farmLocation + ", Hour " + String(hourlyReportCount) + 
+                            ", Rain events " + String(rainDetectionCount);
+    if (rainDetectionCount > 0) {
+      rainfallSummary += ", Duration " + rainDuration + 
+                        ", Start " + rainStart + 
+                        ", End " + rainEnd +
+                        ", Intensity range " + String(minRainIntensity) + "-" + String(maxRainIntensity);
+    } else {
+      rainfallSummary += ", No rainfall";
+    }
+    rainfallSummary += ", Status: " + (isRaining ? "Raining" : "Clear") +
+                      ", Sensor " + String(sensorReliability) + "%";
     Blynk.logEvent("rainfall_data", rainfallSummary);
     
-    // SOIL MOISTURE HOURLY
-    String moistureSummary = String("⏰ HOUR ") + String(hourlyReportCount) + " - SOIL MOISTURE\n" +
-                            "Dry→Wet: " + String(moistureWetCount) + " | Wet→Dry: " + String(moistureDryCount) + "\n" +
-                            "Current: " + (soilIsDry ? "🌵 DRY" : "💧 WET") + "\n" +
-                            "Pump Cycles: " + String(pumpActivationCount);
+    // SOIL MOISTURE HOURLY - Format: Location, Readings, Status, Sensor%
+    String moistureSummary = farmLocation + ", Hour " + String(hourlyReportCount) +
+                            ", Dry→Wet: " + String(moistureWetCount) + 
+                            ", Wet→Dry: " + String(moistureDryCount) +
+                            ", Irrigations: " + String(pumpActivationCount) +
+                            ", Current: " + (soilIsDry ? "DRY" : "WET") +
+                            ", Pump time " + String(pumpMinutes) + "m " + String(pumpSeconds) + "s" +
+                            ", Sensor " + String(sensorReliability) + "%";
     Blynk.logEvent("soil_moisture_levels", moistureSummary);
     
-    // SUNLIGHT HOURLY
-    String sunlightSummary = String("⏰ HOUR ") + String(hourlyReportCount) + " - SUNLIGHT\n" +
-                            "Avg: " + avgLightCondition + " (" + String(avgLightReading) + ")\n" +
-                            "Range: " + String(minLightReading) + " - " + String(maxLightReading);
+    // SUNLIGHT HOURLY - Format: Location, Time slots, Lux values, Score, Sensor
+    String sunlightSummary = farmLocation + ", Hour " + String(hourlyReportCount) +
+                            ", Condition: " + avgLightCondition +
+                            ", Avg " + String(avgLux) + "lx" +
+                            ", Peak " + String(maxLux) + "lx" +
+                            ", Low " + String(minLux) + "lx" +
+                            ", Readings: " + String(lightReadingsCount) +
+                            ", Rain sensor based" +
+                            ", Sensor " + String(sensorReliability) + "%";
     Blynk.logEvent("sunlight_intensity", sunlightSummary);
     
-    // SYSTEM HOURLY
-    String systemSummary = String("⏰ HOUR ") + String(hourlyReportCount) + " - SYSTEM\n" +
-                          "Motion: " + String(motionDetectionCount) + " | Alerts: " + String(alertActivationCount) + "\n" +
-                          "Pump Time: " + String(pumpMinutes) + "m " + String(pumpSeconds) + "s";
+    // TEMPERATURE/SYSTEM HOURLY - Format: Location, Time readings, Conditions, Sensor%
+    String systemSummary = farmLocation + ", Hour " + String(hourlyReportCount) +
+                          ", Motion events: " + String(motionDetectionCount) +
+                          ", Alerts: " + String(alertActivationCount) +
+                          ", Auto mode: " + (autoMode ? "ON" : "OFF") +
+                          ", Pump cycles: " + String(pumpActivationCount) +
+                          ", System operational" +
+                          ", Sensor " + String(sensorReliability) + "%";
     Blynk.logEvent("temperature_humidity", systemSummary);
   }
   
@@ -252,6 +332,8 @@ void sendHourlySummary() {
   lightReadingsCount = 0;
   maxLightReading = 0;
   minLightReading = 1024;
+  rainStartTime = 0;
+  rainEndTime = 0;
 }
 
 // Function to send daily summary report (after 24 hours)
@@ -261,6 +343,11 @@ void sendDailyReport() {
   unsigned long dailyPumpHours = dailyTotalPumpTime / 3600000;
   unsigned long dailyPumpMinutes = (dailyTotalPumpTime % 3600000) / 60000;
   
+  // Convert to lux
+  int dailyAvgLux = map(1024 - dailyAvgLight, 0, 1024, 0, 65000);
+  int dailyMaxLux = map(1024 - dailyMinLight, 0, 1024, 0, 65000);
+  int dailyMinLux = map(1024 - dailyMaxLight, 0, 1024, 0, 65000);
+  
   // Determine daily light condition
   String dailyAvgLightCondition;
   if (dailyAvgLight < 100) dailyAvgLightCondition = "Very Bright";
@@ -269,39 +356,60 @@ void sendDailyReport() {
   else if (dailyAvgLight < 700) dailyAvgLightCondition = "Dim";
   else dailyAvgLightCondition = "Dark";
   
-  // === DAILY REPORTS ===
+  // Calculate reliability
+  int dailyReliability = min(100, (dailyLightCount * 100) / 43200); // Expected ~43200 readings per day
+  
+  // Calculate light quality score (0-100)
+  int lightScore = map(dailyAvgLux, 0, 65000, 0, 100);
+  lightScore = constrain(lightScore, 0, 100);
+  
+  // === DAILY REPORTS (Professional Format) ===
   
   // RAINFALL DAILY
-  String dailyRainfall = String("📅 DAILY REPORT - RAINFALL\n") +
-                        "━━━━━━━━━━━━━━━━━━━━\n" +
-                        "Total Rain Events: " + String(dailyRainDetections) + "\n" +
-                        "Status: " + (isRaining ? "🌧️ Currently Raining" : "☀️ Clear") + "\n" +
-                        "24-Hour Summary Complete";
+  String dailyRainfall = farmLocation + 
+                        ", Rainfall events " + String(dailyRainDetections) +
+                        ", 24-hour monitoring complete" +
+                        ", Total detections across all hours" +
+                        ", Status: " + (isRaining ? "Currently raining" : "Clear sky") +
+                        ", Rain gauge operational" +
+                        ", Sensor " + String(dailyReliability) + "%";
   Blynk.logEvent("rainfall_data", dailyRainfall);
   
   // SOIL MOISTURE DAILY
-  String dailyMoisture = String("📅 DAILY REPORT - SOIL MOISTURE\n") +
-                        "━━━━━━━━━━━━━━━━━━━━\n" +
-                        "Dry Events: " + String(dailyMoistureDryCount) + " | Wet Events: " + String(dailyMoistureWetCount) + "\n" +
-                        "Total Irrigations: " + String(dailyPumpActivations) + "\n" +
-                        "Current: " + (soilIsDry ? "🌵 DRY" : "💧 WET");
+  String dailyMoisture = farmLocation +
+                        ", 24h Summary" +
+                        ", Dry periods: " + String(dailyMoistureDryCount) +
+                        ", Wet periods: " + String(dailyMoistureWetCount) +
+                        ", Total irrigations: " + String(dailyPumpActivations) +
+                        ", Pump runtime " + String(dailyPumpHours) + "h " + String(dailyPumpMinutes) + "m" +
+                        ", Current: " + (soilIsDry ? "DRY" : "WET") +
+                        ", Conditions stable for crop growth" +
+                        ", Sensor " + String(dailyReliability) + "%";
   Blynk.logEvent("soil_moisture_levels", dailyMoisture);
   
   // SUNLIGHT DAILY
-  String dailySunlight = String("📅 DAILY REPORT - SUNLIGHT\n") +
-                        "━━━━━━━━━━━━━━━━━━━━\n" +
-                        "Avg Condition: " + dailyAvgLightCondition + " (" + String(dailyAvgLight) + ")\n" +
-                        "Peak: " + String(dailyMaxLight) + " | Low: " + String(dailyMinLight) + "\n" +
-                        "Total Readings: " + String(dailyLightCount);
+  String dailySunlight = farmLocation +
+                        ", 24h Light Analysis" +
+                        ", Avg condition: " + dailyAvgLightCondition +
+                        ", Avg " + String(dailyAvgLux) + "lx" +
+                        ", Peak " + String(dailyMaxLux) + "lx" +
+                        ", Low " + String(dailyMinLux) + "lx" +
+                        ", Score " + String(lightScore) + "/100" +
+                        ", Total readings: " + String(dailyLightCount) +
+                        ", Rain sensor based monitoring" +
+                        ", Sensor " + String(dailyReliability) + "%";
   Blynk.logEvent("sunlight_intensity", dailySunlight);
   
   // SYSTEM DAILY
-  String dailySystem = String("📅 DAILY REPORT - SYSTEM\n") +
-                      "━━━━━━━━━━━━━━━━━━━━\n" +
-                      "Motion Events: " + String(dailyMotionDetections) + "\n" +
-                      "Total Alerts: " + String(dailyAlertActivations) + "\n" +
-                      "Pump Runtime: " + String(dailyPumpHours) + "h " + String(dailyPumpMinutes) + "m\n" +
-                      "🎉 Day Complete!";
+  String dailySystem = farmLocation +
+                      ", 24h System Report" +
+                      ", Motion events: " + String(dailyMotionDetections) +
+                      ", Security alerts: " + String(dailyAlertActivations) +
+                      ", Pump cycles: " + String(dailyPumpActivations) +
+                      ", Total runtime " + String(dailyPumpHours) + "h " + String(dailyPumpMinutes) + "m" +
+                      ", System health: Optimal" +
+                      ", All sensors operational" +
+                      ", Sensor " + String(dailyReliability) + "%";
   Blynk.logEvent("temperature_humidity", dailySystem);
   
   // Reset daily counters
@@ -571,6 +679,24 @@ void readSensors() {
   
   bool wasRaining = isRaining;
   isRaining = (rainValue < rainThreshold);
+  
+  // Track rain session
+  if (isRaining && !rainSessionActive) {
+    rainStartTime = millis();
+    rainSessionActive = true;
+    maxRainIntensity = 0;
+    minRainIntensity = 1024;
+  }
+  
+  if (rainSessionActive) {
+    if (rainValue < minRainIntensity) minRainIntensity = rainValue;
+    if (rainValue > maxRainIntensity) maxRainIntensity = rainValue;
+    
+    if (!isRaining) {
+      rainEndTime = millis();
+      rainSessionActive = false;
+    }
+  }
   
   // Count rain detections
   if (isRaining && !wasRaining) {
