@@ -1,4 +1,4 @@
-// src/utils/licenseMintingService.ts
+
 import { Address } from 'viem';
 import { useWalletClient, useAccount } from 'wagmi';
 import { createStoryClient } from './config';

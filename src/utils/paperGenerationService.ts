@@ -1,4 +1,4 @@
-// paperGenerationService.ts
+
 import axios from 'axios';
 
 export interface PaperMetadata {

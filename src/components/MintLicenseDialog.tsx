@@ -1,4 +1,4 @@
-// src/components/MintLicenseDialog.tsx
+
 import { useState } from "react";
 import {
   Dialog,
@@ -48,7 +48,7 @@ export const MintLicenseDialog = ({
   const [loading, setLoading] = useState(false);
   const [receiver, setReceiver] = useState<string>("");
   
-  // Success dialog state
+
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successData, setSuccessData] = useState<{
     txHash: string;
@@ -56,7 +56,7 @@ export const MintLicenseDialog = ({
     receiverAddress?: string;
   } | null>(null);
 
-  // Get the first license term ID (typically the one we want to use)
+ 
   const licenseTermId = licenseTermsId && licenseTermsId.length > 0 
     ? Number(licenseTermsId[0]) 
     : 1;
@@ -70,10 +70,10 @@ export const MintLicenseDialog = ({
       return;
     }
     
-    // Parse the number
+   
     const numValue = parseInt(value);
     
-    // Only update if it's a valid number
+   
     if (!isNaN(numValue)) {
       setAmount(value);
     }
@@ -116,18 +116,17 @@ export const MintLicenseDialog = ({
       );
 
       if (result.success) {
-        // Set success data and show success dialog
+      
         setSuccessData({
           txHash: result.txHash!,
           licenseTokenIds: result.licenseTokenIds,
           receiverAddress: receiverAddr,
         });
-        
-        // Close main dialog and show success dialog
+       
         setOpen(false);
         setShowSuccessDialog(true);
         
-        // Reset form
+      
         setAmount("1");
         setReceiver("");
       } else {

@@ -1,7 +1,4 @@
-// gmailService.ts
-// Service for handling Gmail API operations
 
-// Declare types for TypeScript
 declare const gapi: any;
 declare const google: any;
 
@@ -12,7 +9,7 @@ export interface SensorData {
   timestamp: string;
   sensorHealth: string;
   location?: string;
-  imageHash?: string; // Add image hash field
+  imageHash?: string; 
   icon?: React.ReactNode;
 }
 
@@ -70,7 +67,7 @@ export class GmailService {
         this.tokenClient = google.accounts.oauth2.initTokenClient({
           client_id: this.config.clientId,
           scope: this.config.scope,
-          callback: '', // Will be set when requesting token
+          callback: '', 
         });
         resolve();
       } catch (error) {
@@ -296,8 +293,8 @@ export class GmailService {
       
       // Get text content from HTML
       const textOnly = htmlBody
-        .replace(/<[^>]*>/g, ' ') // Replace tags with space
-        .replace(/\s+/g, ' ') // Collapse multiple spaces
+        .replace(/<[^>]*>/g, ' ') 
+        .replace(/\s+/g, ' ') 
         .trim();
       
       data = textOnly;

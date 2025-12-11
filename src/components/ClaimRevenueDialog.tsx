@@ -12,7 +12,7 @@ interface ClaimRevenueDialogProps {
   datasetTitle: string;
   ipAssetId: string;
   error?: string;
-  isDerivative?: boolean; // Added this prop
+  isDerivative?: boolean; 
 }
 
 export const ClaimRevenueDialog = ({
@@ -25,13 +25,13 @@ export const ClaimRevenueDialog = ({
   datasetTitle,
   ipAssetId,
   error,
-  isDerivative = false, // Default to false
+  isDerivative = false, 
 }: ClaimRevenueDialogProps) => {
   
-  // Construct Story Explorer URL using the transaction hash
+
   const storyExplorerUrltx = txHash ? `https://aeneid.storyscan.io/tx/${txHash}` : '';
   
-  // Get appropriate labels based on whether it's a derivative
+ 
   const getAssetTypeLabel = () => isDerivative ? "DERIVATIVE" : "DATASET";
   const getAssetTypeName = () => isDerivative ? "Derivative" : "Dataset";
   const getIpAssetLabel = () => isDerivative ? "DERIVATIVE IP ID" : "IP ASSET ID";
@@ -40,7 +40,7 @@ export const ClaimRevenueDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[900px] border-2 border-green-500/20 bg-gradient-to-br from-background via-background to-green-500/5 p-8">
         <div className="flex gap-8">
-          {/* Left Column - Status Icon & Message */}
+          
           <div className="flex-1 flex flex-col items-center justify-center space-y-6">
             {claiming && (
               <>

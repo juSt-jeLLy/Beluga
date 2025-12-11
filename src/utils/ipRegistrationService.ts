@@ -1,4 +1,4 @@
-// ipRegistrationService.ts
+
 import { IpMetadata, PILFlavor } from '@story-protocol/core-sdk';
 import { parseEther, Address } from 'viem';
 import { useWalletClient, useAccount } from 'wagmi';

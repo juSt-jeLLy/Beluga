@@ -322,7 +322,6 @@ export async function batchGetEnrichedMetadata(
   return results;
 }
 
-// Export a default service object with all functions
 export const MetadataFetchService = {
   getCoreMetadata,
   getMetadataURI,

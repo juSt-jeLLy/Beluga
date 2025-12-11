@@ -1,4 +1,4 @@
-// src/utils/revenueClaimingService.ts
+
 import { Address } from 'viem';
 import { useWalletClient, useAccount } from 'wagmi';
 import { WIP_TOKEN_ADDRESS } from '@story-protocol/core-sdk';
