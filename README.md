@@ -262,3 +262,11 @@ npm install
 # Start development server
 npm run dev
 ```
+
+## 📜 License
+
+MIT License - Build freely, preserve languages, decentralize data.
+
+---
+
+**Built with 💙 for the decentralized future **
