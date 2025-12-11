@@ -247,3 +247,18 @@ Unlike traditional data brokers or cloud platforms, BELUGA provides:
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
+
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <YOUR_GIT_URL>
+cd Beluga
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
