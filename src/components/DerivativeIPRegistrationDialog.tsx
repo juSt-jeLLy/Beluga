@@ -178,7 +178,6 @@ export default function DerivativeIPRegistrationDialog({
 }: DerivativeIPRegistrationDialogProps) {
   const [creatorName, setCreatorName] = useState('');
   const [royaltyRecipient, setRoyaltyRecipient] = useState('');
- 
   const [isRegistering, setIsRegistering] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   
@@ -194,114 +193,112 @@ export default function DerivativeIPRegistrationDialog({
     }
   }, [open, parentIpAssetId, licenseTermsId, toast]);
 
-const handleRegister = async () => {
-  if (!sensorData) return;
-  
-  if (!creatorName.trim()) {
-    toast({
-      title: 'Creator Name Required',
-      description: 'Please enter the creator name',
-      variant: 'destructive',
-    });
-    return;
-  }
-
-  if (!parentIpAssetId) {
-    toast({
-      title: 'Parent IP ID Required',
-      description: 'Parent IP Asset ID is required',
-      variant: 'destructive',
-    });
-    return;
-  }
-
-  if (!licenseTermsId) {
-    toast({
-      title: 'License Terms ID Required',
-      description: 'License terms ID is required',
-      variant: 'destructive',
-    });
-    return;
-  }
-
-  if (!isConnected) {
-    toast({
-      title: 'Wallet Not Connected',
-      description: 'Please connect your wallet first',
-      variant: 'destructive',
-    });
-    return;
-  }
-
-  if (!sensorDataId) {
-    toast({
-      title: 'Sensor Data ID Missing',
-      description: 'Cannot register derivative IP without sensor data reference',
-      variant: 'destructive',
-    });
-    return;
-  }
-
-  setIsRegistering(true);
-  setProcessingStep(0);
-
-  try {
-    const stepDelay = 1800;
+  const handleRegister = async () => {
+    if (!sensorData) return;
     
-    for (let i = 0; i < 5; i++) {
-      setProcessingStep(i);
-      await new Promise(resolve => setTimeout(resolve, stepDelay));
-    }
-
-    // Simplified call without royaltyPercentage and maxMintingFee
-    const result = await registerDerivativeIP(
-      sensorData,
-      location,
-      creatorName.trim(),
-      parentIpAssetId as Address,
-      BigInt(licenseTermsId),
-      royaltyRecipient.trim() ? royaltyRecipient.trim() as Address : undefined,
-      undefined, // royaltyPercentage
-      undefined, // maxMintingFee
-      sensorDataId
-    );
-
-    if (result.success) {
-      // Call parent callback with success data
-      if (onRegistrationComplete) {
-        onRegistrationComplete({
-          ipId: result.ipId,
-          txHash: result.txHash,
-          storyExplorerUrl: result.storyExplorerUrl,
-          parentIpId: parentIpAssetId,
-          datasetTitle: sensorData.title,
-          creatorName: creatorName,
-        });
-      }
-      
-      // Reset form
-      setCreatorName('');
-      setRoyaltyRecipient('');
-
-    } else {
+    if (!creatorName.trim()) {
       toast({
-        title: 'Registration Failed',
-        description: result.error || 'Unknown error occurred',
+        title: 'Creator Name Required',
+        description: 'Please enter the creator name',
         variant: 'destructive',
       });
+      return;
     }
-  } catch (error: any) {
-    console.error('Registration error:', error);
-    toast({
-      title: 'Registration Error',
-      description: error.message || 'Failed to register derivative IP',
-      variant: 'destructive',
-    });
-  } finally {
-    setIsRegistering(false);
+
+    if (!parentIpAssetId) {
+      toast({
+        title: 'Parent IP ID Required',
+        description: 'Parent IP Asset ID is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!licenseTermsId) {
+      toast({
+        title: 'License Terms ID Required',
+        description: 'License terms ID is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!isConnected) {
+      toast({
+        title: 'Wallet Not Connected',
+        description: 'Please connect your wallet first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!sensorDataId) {
+      toast({
+        title: 'Sensor Data ID Missing',
+        description: 'Cannot register derivative IP without sensor data reference',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsRegistering(true);
     setProcessingStep(0);
-  }
-};
+
+    try {
+      const stepDelay = 1800;
+      
+      for (let i = 0; i < 5; i++) {
+        setProcessingStep(i);
+        await new Promise(resolve => setTimeout(resolve, stepDelay));
+      }
+
+      const result = await registerDerivativeIP(
+        sensorData,
+        location,
+        creatorName.trim(),
+        parentIpAssetId as Address,
+        BigInt(licenseTermsId),
+        royaltyRecipient.trim() ? royaltyRecipient.trim() as Address : undefined,
+        undefined, // royaltyPercentage
+        undefined, // maxMintingFee
+        sensorDataId
+      );
+
+      if (result.success) {
+        // Call parent callback with success data
+        if (onRegistrationComplete) {
+          onRegistrationComplete({
+            ipId: result.ipId,
+            txHash: result.txHash,
+            storyExplorerUrl: result.storyExplorerUrl,
+            parentIpId: parentIpAssetId,
+            datasetTitle: sensorData.title,
+            creatorName: creatorName,
+          });
+        }
+        
+        // Reset form
+        setCreatorName('');
+        setRoyaltyRecipient('');
+      } else {
+        toast({
+          title: 'Registration Failed',
+          description: result.error || 'Unknown error occurred',
+          variant: 'destructive',
+        });
+      }
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      toast({
+        title: 'Registration Error',
+        description: error.message || 'Failed to register derivative IP',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRegistering(false);
+      setProcessingStep(0);
+    }
+  };
 
   const handleClose = () => {
     if (!isRegistering) {
@@ -318,6 +315,7 @@ const handleRegister = async () => {
       <Dialog open={open && !isRegistering} onOpenChange={handleClose}>
         <DialogContent className="max-w-[900px] border-2 border-primary/20 bg-gradient-to-br from-background via-background to-primary/5 p-8">
           <div className="flex gap-8">
+            {/* LEFT SIDE - Sensor Data and Parent Info */}
             <div className="flex-1 space-y-6">
               <div>
                 <DialogHeader className="space-y-3 mb-6">
@@ -388,28 +386,33 @@ const handleRegister = async () => {
                       </div>
                     </div>
                   )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="creator-name" className="text-sm font-semibold flex items-center gap-2">
-                      Creator Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="creator-name"
-                      placeholder="Enter your full name"
-                      value={creatorName}
-                      onChange={(e) => setCreatorName(e.target.value)}
-                      className="h-11 border-2 border-primary/20 focus:border-primary"
-                    />
-                  </div>
                 </div>
               </div>
             </div>
 
+            {/* RIGHT SIDE - Configuration and Creator Name */}
             <div className="flex-1 space-y-6">
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-primary">
                   <Coins className="h-4 w-4" />
                   Derivative Configuration
+                </div>
+                
+                {/* Creator Name moved to RIGHT side */}
+                <div className="space-y-2">
+                  <Label htmlFor="creator-name" className="text-sm font-semibold flex items-center gap-2">
+                    Creator Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="creator-name"
+                    placeholder="Enter your full name"
+                    value={creatorName}
+                    onChange={(e) => setCreatorName(e.target.value)}
+                    className="h-11 border-2 border-primary/20 focus:border-primary"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This will be recorded as the creator of the derivative IP
+                  </p>
                 </div>
                 
                 <div className="space-y-2">
@@ -427,8 +430,6 @@ const handleRegister = async () => {
                     Leave empty to use your connected wallet
                   </p>
                 </div>
-
-               
               </div>
 
               <div className="p-4 rounded-xl bg-muted/30 border border-border">
