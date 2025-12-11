@@ -37,8 +37,6 @@ export interface DerivativeIPRecord {
   creator_name: string;
   creator_address: string;
   royalty_recipient?: string;
-  royalty_percentage?: number;
-  max_minting_fee?: number;
   max_revenue_share?: number;
   max_rts?: number;
   transaction_hash: string;

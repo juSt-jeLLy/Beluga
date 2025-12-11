@@ -1,4 +1,3 @@
-
 import { IpMetadata } from '@story-protocol/core-sdk';
 import { Address, parseEther } from 'viem';
 import { useWalletClient, useAccount } from 'wagmi';
@@ -241,7 +240,7 @@ export async function registerSensorDataAsDerivativeIP(
       }
     ] : undefined;
     
-    // 7. Convert maxMintingFee to Wei if provided, otherwise set to 0 (no limit)
+    // 8. Convert maxMintingFee to Wei if provided, otherwise set to 0 (no limit)
     const finalMaxMintingFee = maxMintingFee !== undefined 
       ? parseEther(String(maxMintingFee))
       : 0n;
@@ -372,7 +371,7 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
         walletClient
       );
       
-      // 2. Save to database if successful
+      // 2. Save to database if successful (without royalty params)
       if (registrationResult.success && sensorDataId && supabaseService) {
         try {
           // Save to derivative_ip_assets table
@@ -383,8 +382,6 @@ export function useDerivativeIPRegistration(supabaseService?: SupabaseService) {
             license_terms_id: parentLicenseTermsId.toString(),
             creator_name: creatorName,
             creator_address: address,
-            royalty_recipient: royaltyRecipient || address,
-            royalty_percentage: royaltyPercentage,
             transaction_hash: registrationResult.txHash!,
             story_explorer_url: registrationResult.storyExplorerUrl,
             metadata_url: registrationResult.metadataUrl,

@@ -178,8 +178,7 @@ export default function DerivativeIPRegistrationDialog({
 }: DerivativeIPRegistrationDialogProps) {
   const [creatorName, setCreatorName] = useState('');
   const [royaltyRecipient, setRoyaltyRecipient] = useState('');
-  const [royaltyPercentage, setRoyaltyPercentage] = useState('10');
-  const [maxMintingFee, setMaxMintingFee] = useState('0.01');
+ 
   const [isRegistering, setIsRegistering] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   
@@ -195,121 +194,119 @@ export default function DerivativeIPRegistrationDialog({
     }
   }, [open, parentIpAssetId, licenseTermsId, toast]);
 
-  const handleRegister = async () => {
-    if (!sensorData) return;
+const handleRegister = async () => {
+  if (!sensorData) return;
+  
+  if (!creatorName.trim()) {
+    toast({
+      title: 'Creator Name Required',
+      description: 'Please enter the creator name',
+      variant: 'destructive',
+    });
+    return;
+  }
+
+  if (!parentIpAssetId) {
+    toast({
+      title: 'Parent IP ID Required',
+      description: 'Parent IP Asset ID is required',
+      variant: 'destructive',
+    });
+    return;
+  }
+
+  if (!licenseTermsId) {
+    toast({
+      title: 'License Terms ID Required',
+      description: 'License terms ID is required',
+      variant: 'destructive',
+    });
+    return;
+  }
+
+  if (!isConnected) {
+    toast({
+      title: 'Wallet Not Connected',
+      description: 'Please connect your wallet first',
+      variant: 'destructive',
+    });
+    return;
+  }
+
+  if (!sensorDataId) {
+    toast({
+      title: 'Sensor Data ID Missing',
+      description: 'Cannot register derivative IP without sensor data reference',
+      variant: 'destructive',
+    });
+    return;
+  }
+
+  setIsRegistering(true);
+  setProcessingStep(0);
+
+  try {
+    const stepDelay = 1800;
     
-    if (!creatorName.trim()) {
-      toast({
-        title: 'Creator Name Required',
-        description: 'Please enter the creator name',
-        variant: 'destructive',
-      });
-      return;
+    for (let i = 0; i < 5; i++) {
+      setProcessingStep(i);
+      await new Promise(resolve => setTimeout(resolve, stepDelay));
     }
 
-    if (!parentIpAssetId) {
-      toast({
-        title: 'Parent IP ID Required',
-        description: 'Parent IP Asset ID is required',
-        variant: 'destructive',
-      });
-      return;
-    }
+    // Simplified call without royaltyPercentage and maxMintingFee
+    const result = await registerDerivativeIP(
+      sensorData,
+      location,
+      creatorName.trim(),
+      parentIpAssetId as Address,
+      BigInt(licenseTermsId),
+      royaltyRecipient.trim() ? royaltyRecipient.trim() as Address : undefined,
+      undefined, // royaltyPercentage
+      undefined, // maxMintingFee
+      sensorDataId
+    );
 
-    if (!licenseTermsId) {
-      toast({
-        title: 'License Terms ID Required',
-        description: 'License terms ID is required',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-
-
-    if (!isConnected) {
-      toast({
-        title: 'Wallet Not Connected',
-        description: 'Please connect your wallet first',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (!sensorDataId) {
-      toast({
-        title: 'Sensor Data ID Missing',
-        description: 'Cannot register derivative IP without sensor data reference',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsRegistering(true);
-    setProcessingStep(0);
-
-    try {
-      const stepDelay = 1800;
-      
-      for (let i = 0; i < 5; i++) {
-        setProcessingStep(i);
-        await new Promise(resolve => setTimeout(resolve, stepDelay));
-      }
-
-      const result = await registerDerivativeIP(
-        sensorData,
-        location,
-        creatorName.trim(),
-        parentIpAssetId as Address,
-        BigInt(licenseTermsId),
-        royaltyRecipient.trim() ? royaltyRecipient.trim() as Address : undefined,
-        sensorDataId
-      );
-
-      if (result.success) {
-        // Call parent callback with success data
-        if (onRegistrationComplete) {
-          onRegistrationComplete({
-            ipId: result.ipId,
-            txHash: result.txHash,
-            storyExplorerUrl: result.storyExplorerUrl,
-            parentIpId: parentIpAssetId,
-            datasetTitle: sensorData.title,
-            creatorName: creatorName,
-          });
-        }
-        
-        // Reset form
-        setCreatorName('');
-        setRoyaltyRecipient('');
-        setRoyaltyPercentage('10');
-        setMaxMintingFee('0.01');
-      } else {
-        toast({
-          title: 'Registration Failed',
-          description: result.error || 'Unknown error occurred',
-          variant: 'destructive',
+    if (result.success) {
+      // Call parent callback with success data
+      if (onRegistrationComplete) {
+        onRegistrationComplete({
+          ipId: result.ipId,
+          txHash: result.txHash,
+          storyExplorerUrl: result.storyExplorerUrl,
+          parentIpId: parentIpAssetId,
+          datasetTitle: sensorData.title,
+          creatorName: creatorName,
         });
       }
-    } catch (error: any) {
-      console.error('Registration error:', error);
+      
+      // Reset form
+      setCreatorName('');
+      setRoyaltyRecipient('');
+
+    } else {
       toast({
-        title: 'Registration Error',
-        description: error.message || 'Failed to register derivative IP',
+        title: 'Registration Failed',
+        description: result.error || 'Unknown error occurred',
         variant: 'destructive',
       });
-    } finally {
-      setIsRegistering(false);
-      setProcessingStep(0);
     }
-  };
+  } catch (error: any) {
+    console.error('Registration error:', error);
+    toast({
+      title: 'Registration Error',
+      description: error.message || 'Failed to register derivative IP',
+      variant: 'destructive',
+    });
+  } finally {
+    setIsRegistering(false);
+    setProcessingStep(0);
+  }
+};
 
   const handleClose = () => {
     if (!isRegistering) {
       setCreatorName('');
       setRoyaltyRecipient('');
-      setRoyaltyPercentage('10');
-      setMaxMintingFee('0.01');
       onOpenChange(false);
     }
   };
