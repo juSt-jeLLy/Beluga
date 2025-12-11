@@ -84,6 +84,8 @@ interface DerivativeDataset {
   metadata?: EnrichedIPMetadata;
   metadataLoading?: boolean;
   showMetadata?: boolean;
+  parent_revenue_share?: number;
+  parent_minting_fee?: number;
 }
 
 const getIconForType = (type: string): React.ReactNode => {
@@ -222,6 +224,7 @@ const Marketplace = () => {
   const fetchDerivativeDatasets = async () => {
     setLoadingDerivatives(true);
     try {
+      // First fetch derivatives
       const result = await supabaseClient
         .from('derivative_ip_with_parent_info')
         .select('*')
@@ -235,10 +238,38 @@ const Marketplace = () => {
       if (result.data && result.data.length > 0) {
         console.log('Found derivatives for marketplace:', result.data);
         
+        // Get all parent IP IDs to fetch their revenue share and minting fee
+        const parentIpIds = result.data.map((derivative: any) => derivative.parent_ip_id);
+        const uniqueParentIpIds = [...new Set(parentIpIds)];
+        
+        // Fetch parent IP details to get revenue share and minting fee
+        const parentDetails = new Map<string, { revenue_share?: number; minting_fee?: number }>();
+        
+        if (uniqueParentIpIds.length > 0) {
+          const { data: parentData, error: parentError } = await supabaseClient
+            .from('sensor_data')
+            .select('ip_asset_id, revenue_share, minting_fee')
+            .in('ip_asset_id', uniqueParentIpIds);
+          
+          if (!parentError && parentData) {
+            parentData.forEach(parent => {
+              if (parent.ip_asset_id) {
+                parentDetails.set(parent.ip_asset_id, {
+                  revenue_share: parent.revenue_share,
+                  minting_fee: parent.minting_fee
+                });
+              }
+            });
+          }
+        }
+        
         const transformedDerivatives: DerivativeDataset[] = result.data.map((derivative: any) => {
           const dataPreview = derivative.derivative_data && derivative.derivative_data.length > 100 
             ? derivative.derivative_data.substring(0, 100) + '...' 
             : 'Derivative dataset based on parent IP asset';
+          
+          // Get parent revenue share and minting fee
+          const parentInfo = parentDetails.get(derivative.parent_ip_id);
           
           return {
             id: derivative.id,
@@ -263,6 +294,8 @@ const Marketplace = () => {
             parent_location: derivative.parent_location,
             showMetadata: false,
             metadataLoading: false,
+            parent_revenue_share: parentInfo?.revenue_share,
+            parent_minting_fee: parentInfo?.minting_fee,
           };
         });
 
@@ -918,6 +951,22 @@ const Marketplace = () => {
                         </div>
                       </div>
                       
+                      {/* Show parent revenue share and minting fee for derivatives */}
+                      {(derivative.parent_revenue_share || derivative.parent_minting_fee) && (
+                        <div className="flex gap-2 text-xs">
+                          {derivative.parent_revenue_share !== undefined && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                              <span className="text-[10px]">Parent: {derivative.parent_revenue_share}% Rev Share</span>
+                            </Badge>
+                          )}
+                          {derivative.parent_minting_fee !== undefined && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                              <span className="text-[10px]">Parent: {derivative.parent_minting_fee} WIP</span>
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                      
                       <div className="flex gap-2 text-xs">
                         <Badge variant="outline" className="bg-purple-500/10 text-purple-600 border-purple-500/20">
                           <FileCode className="h-3 w-3 mr-1" />
@@ -1021,8 +1070,8 @@ const Marketplace = () => {
                           licenseTermsId={[BigInt(derivative.license_terms_id)]}
                           datasetTitle={derivative.title}
                           location={derivative.location}
-                          revenueShare={10} // Default revenue share for derivatives
-                          mintingFee={0.01} // Default minting fee for derivatives
+                          revenueShare={derivative.parent_revenue_share} // Use parent's revenue share
+                          mintingFee={derivative.parent_minting_fee} // Use parent's minting fee
                           storyExplorerUrl={derivative.story_explorer_url}
                           sensorDataId={derivative.sensor_data_id}
                           supabaseService={supabaseService}
