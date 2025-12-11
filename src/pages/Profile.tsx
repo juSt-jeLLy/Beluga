@@ -918,7 +918,8 @@ const DerivativeRevenueCard = ({ derivative }: { derivative: DerivativeWithReven
   );
 };
 
-// Component for License Card with Pay Royalty to IP functionality
+
+// LicenseCard Component - Updated without JSON option
 const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps) => {
   const { payRoyalty, paying: payingRoyalty, isConnected } = useRoyaltyPayment();
   const { downloadMetadata, downloading: downloadingMetadata } = useIPMetadataDownload();
@@ -975,8 +976,8 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
     }
   };
 
-  // Handle download in different formats
-  const handleDownload = async (format: 'json' | 'markdown' | 'text') => {
+  // Handle download in different formats (now only markdown or text)
+  const handleDownload = async (format: 'markdown' | 'text') => {
     try {
       // Prepare license data
       const licenseData = {
@@ -1001,7 +1002,7 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
         timestamp: license.dataset_timestamp,
         sensor_health: license.dataset_sensor_health,
         image_hash: license.dataset_image_hash,
-        source: 'gmail' as const, // You might want to track this in the database
+        source: 'gmail' as const,
       };
       
       const success = await downloadMetadata(
@@ -1210,17 +1211,13 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => handleDownload('json')}>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Download as JSON
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleDownload('markdown')}>
                   <FileText className="h-4 w-4 mr-2" />
-                  Download as Markdown
+                  Download as Markdown (.md)
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleDownload('text')}>
                   <FileText className="h-4 w-4 mr-2" />
-                  Download as Text
+                  Download as Text (.txt)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1267,7 +1264,7 @@ const LicenseCard = ({ license, index, toggleMetadata, toast }: LicenseCardProps
                 </div>
               )}
 
-              {license.metadata.owner && (
+              {license.metadata.owner && license.metadata.owner !== '0x0000000000000000000000000000000000000000' && (
                 <div className="bg-primary/5 p-2 rounded border border-primary/20">
                   <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                     <User className="h-3 w-3" />
