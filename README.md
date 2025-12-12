@@ -60,7 +60,8 @@ Unlike traditional data brokers or cloud platforms, BELUGA provides:
   - Robots send data via WiFi/cellular to Blynk Cloud (IoT platform)
   - Images uploaded to IPFS with hash stored in data
 
-### 🔍 Data Extraction
+### 🔍 Data Extraction 
+   - (Saved some in database for testing for anyone)
 - **Multiple Sources**: Extract sensor data from Arduino-controlled robots via:
   - Gmail API (robot@blynk.cloud emails)
   - Blynk Cloud IoT platform
