@@ -1,14 +1,14 @@
-#define BLYNK_TEMPLATE_ID "TMPL3nkbcyHtQ"
-#define BLYNK_TEMPLATE_NAME "Sanjay"
-#define BLYNK_AUTH_TOKEN "VKGfQMseCybZT2-v0EI7a2Sk8N9ep-sI"
+#define BLYNK_TEMPLATE_ID ""
+#define BLYNK_TEMPLATE_NAME ""
+#define BLYNK_AUTH_TOKEN ""
 
 #include <ESP8266WiFi.h>
 #include <BlynkSimpleEsp8266.h>
 #include <WiFiManager.h>
 #include <Servo.h>
 
-char ssid[] = "Sanjay";
-char pass[] = "123456ss";
+char ssid[] = "";
+char pass[] = "";
 
 // Motor driver pins
 int IN1 = D1;
